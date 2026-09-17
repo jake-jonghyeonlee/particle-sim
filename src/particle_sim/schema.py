@@ -64,6 +64,37 @@ class ParticleSourceStep(BaseModel):
     fab_distribution_layer: str
 
 
+class OpenPath(BaseModel):
+    """Open 판정 대상 전극과 단자. 단자가 없으면 fallback 규칙을 명시해야 한다."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    path_id: str
+    electrode: str
+    terminal_a_yx_px: tuple[int, int] | None = None
+    terminal_b_yx_px: tuple[int, int] | None = None
+    fallback: Literal["error", "roi_boundary", "skeleton_cut"] = "error"
+
+    @model_validator(mode="after")
+    def _check_terminals(self) -> OpenPath:
+        given = (self.terminal_a_yx_px is None) + (self.terminal_b_yx_px is None)
+        if given == 1:
+            raise ValueError(
+                f"open_path '{self.path_id}'의 단자는 둘 다 있거나 둘 다 없어야 합니다"
+            )
+        if given == 2 and self.fallback == "error":
+            raise ValueError(
+                f"open_path '{self.path_id}'에 단자가 없으면 fallback을 지정해야 합니다"
+            )
+        for name, terminal in (
+            ("terminal_a_yx_px", self.terminal_a_yx_px),
+            ("terminal_b_yx_px", self.terminal_b_yx_px),
+        ):
+            if terminal is not None and (terminal[0] < 0 or terminal[1] < 0):
+                raise ValueError(f"open_path '{self.path_id}'의 {name}는 0 이상이어야 합니다")
+        return self
+
+
 class ElectrodePair(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
 
@@ -116,6 +147,7 @@ class ProductManifest(BaseModel):
     electrodes: list[Electrode]
     particle_source_steps: list[ParticleSourceStep]
     electrode_pairs: list[ElectrodePair]
+    open_paths: list[OpenPath] = Field(default_factory=list)
     particle_sizes_um: list[float] = Field(default_factory=lambda: list(PARTICLE_SIZES_UM))
     embedding_depth_um: float = Field(ge=0)
     contact_margin_um: float
@@ -210,6 +242,14 @@ class ProductManifest(BaseModel):
                     f"vertical_short pair '{pair.pair_id}'은(는) 다른 layer_name이어야 합니다"
                 )
 
+        self._check_unique("open_paths", "path_id", [o.path_id for o in self.open_paths])
+        for open_path in self.open_paths:
+            if open_path.electrode not in electrode_by_id:
+                raise ValueError(
+                    f"open_path '{open_path.path_id}'의 전극 "
+                    f"'{open_path.electrode}'이(가) 존재하지 않습니다"
+                )
+
         for step in self.particle_source_steps:
             if step.surface_model != "partial":
                 continue
@@ -242,6 +282,80 @@ class ProductManifest(BaseModel):
             if v in seen:
                 raise ValueError(f"{section}의 {key} '{v}'이(가) 중복됩니다")
             seen.add(v)
+
+
+class NormalSpec(BaseModel):
+    """평균과 표준편차로 정의한 정규 분포."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    mean: float = 0.0
+    sigma: float = Field(ge=0.0)
+
+
+class UniformSpec(BaseModel):
+    """구간 균등 분포. low == high면 고정값이다."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    low: float
+    high: float
+
+    @model_validator(mode="after")
+    def _check_range(self) -> UniformSpec:
+        if self.high < self.low:
+            raise ValueError(f"uniform 구간이 뒤집혔습니다: low={self.low}, high={self.high}")
+        return self
+
+
+class ScenarioConfig(BaseModel):
+    """공정 산포 시나리오 설정. 실제 측정값이 아니면 evidence='assumed'로 기록한다."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    schema_version: Literal["1.0"]
+    assumption_set: str
+    evidence: Literal["measured", "assumed"]
+    thickness_delta_um: dict[str, NormalSpec] = Field(default_factory=dict)
+    overlay_um: dict[str, NormalSpec] = Field(default_factory=dict)
+    cd_bias_um: dict[str, NormalSpec] = Field(default_factory=dict)
+    particle_diameter_delta_um: NormalSpec | None = None
+    center_offset_um: NormalSpec | None = None
+    embedding_depth_um: UniformSpec | None = None
+    planarization_factor: dict[str, UniformSpec] = Field(default_factory=dict)
+    contact_margin_um: UniformSpec | None = None
+
+    def is_degenerate(self) -> bool:
+        """모든 변수의 산포가 0이면 True. nominal 결과와 일치해야 한다."""
+        normals = [
+            *self.thickness_delta_um.values(),
+            *self.overlay_um.values(),
+            *self.cd_bias_um.values(),
+        ]
+        for spec in (self.particle_diameter_delta_um, self.center_offset_um):
+            if spec is not None:
+                normals.append(spec)
+        if any(spec.sigma > 0.0 or spec.mean != 0.0 for spec in normals):
+            return False
+        uniforms = list(self.planarization_factor.values())
+        for spec in (self.embedding_depth_um, self.contact_margin_um):
+            if spec is not None:
+                uniforms.append(spec)
+        return all(spec.low == spec.high for spec in uniforms)
+
+
+def scenario_warnings(config: ScenarioConfig) -> list[str]:
+    """시나리오 설정의 근거를 TODO_PHYSICS 경고로 만든다."""
+    warnings = [
+        f"TODO_PHYSICS: scenario.assumption_set={config.assumption_set} "
+        f"evidence={config.evidence} 산포 입력의 근거입니다"
+    ]
+    if config.evidence == "assumed":
+        warnings.append(
+            "TODO_PHYSICS: scenario.evidence=assumed 확률값은 가정한 산포에 조건부이며 "
+            "실제 Fab 불량확률이 아닙니다"
+        )
+    return warnings
 
 
 def todo_physics_warnings(m: ProductManifest) -> list[str]:
