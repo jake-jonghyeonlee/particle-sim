@@ -15,6 +15,9 @@ CASE_NAMES: tuple[str, ...] = (
     "diagonal_offset",
     "triple_overlap",
     "pilot",
+    "open_straight",
+    "open_detour",
+    "open_branch",
 )
 SHAPE_YX = (200, 200)
 PIXEL_UM = 0.5
@@ -63,6 +66,26 @@ _CASES: dict[str, tuple[list[tuple[str, str, str, str, int, int]], list[tuple[st
 }
 
 
+# Open cases draw a wire on M2 as pixel rectangles instead of full-height stripes.
+# (name -> list of (y0, y1, x0, x1) blocks, terminals in pixels)
+_OPEN_SHAPES: dict[str, tuple[list[tuple[int, int, int, int]], tuple[int, int], tuple[int, int]]] = {
+    # straight 6 px wide line; a large particle cuts it
+    "open_straight": ([(97, 103, 20, 180)], (100, 22), (100, 178)),
+    # same line plus a wide detour that keeps the terminals connected
+    "open_detour": (
+        [(97, 103, 20, 180), (60, 66, 60, 140), (60, 103, 60, 66), (60, 103, 134, 140)],
+        (100, 22),
+        (100, 178),
+    ),
+    # main line with a dead-end branch: cutting the branch must not count as open
+    "open_branch": (
+        [(97, 103, 20, 180), (40, 100, 100, 106)],
+        (100, 22),
+        (100, 178),
+    ),
+}
+
+
 @dataclass(frozen=True)
 class SyntheticCase:
     name: str
@@ -71,27 +94,29 @@ class SyntheticCase:
     electrode_masks: dict[str, np.ndarray]
 
 
+def _blocks(blocks: list[tuple[int, int, int, int]]) -> np.ndarray:
+    mask = np.zeros(SHAPE_YX, dtype=bool)
+    for y0, y1, x0, x1 in blocks:
+        mask[y0:y1, x0:x1] = True
+    return mask
+
+
 def _stripe(x0: int, x1: int) -> np.ndarray:
     mask = np.zeros(SHAPE_YX, dtype=bool)
     mask[:, x0:x1] = True
     return mask
 
 
-def build_case(name: str) -> SyntheticCase:
-    """Build one synthetic product manifest with its layer and electrode masks."""
-    if name not in _CASES:
-        raise ValueError(f"알 수 없는 합성 case: {name!r} (허용: {', '.join(CASE_NAMES)})")
-    electrode_specs, pair_specs = _CASES[name]
-    electrode_masks = {spec[0]: _stripe(spec[4], spec[5]) for spec in electrode_specs}
-    layer_masks = {
-        layer: np.zeros(SHAPE_YX, dtype=bool)
-        for layer, material, *_ in STACK
-        if material == "conductor"
-    }
-    for spec in electrode_specs:
-        layer_masks[spec[1]] |= electrode_masks[spec[0]]
-
-    manifest = {
+def _base_manifest(
+    name: str,
+    *,
+    electrodes: list[dict],
+    layer_masks: dict[str, np.ndarray],
+    pairs: list[dict],
+    open_paths: list[dict],
+) -> dict:
+    """Manifest dict shared by every synthetic case."""
+    return {
         "schema_version": "1.0",
         "product_id": f"SYN_{name.upper()}",
         "product_family": "SYN",
@@ -122,16 +147,7 @@ def build_case(name: str) -> SyntheticCase:
         "layer_masks": [
             {"layer_name": layer, "path": f"masks/layer_{layer}.png"} for layer in layer_masks
         ],
-        "electrodes": [
-            {
-                "electrode_id": spec[0],
-                "layer_name": spec[1],
-                "net_id": spec[2],
-                "electrode_role": spec[3],
-                "path": f"masks/electrode_{spec[0]}.png",
-            }
-            for spec in electrode_specs
-        ],
+        "electrodes": electrodes,
         "particle_source_steps": [
             {
                 "step_id": step_id,
@@ -141,7 +157,85 @@ def build_case(name: str) -> SyntheticCase:
             }
             for step_id, layer, surface_model in STEPS
         ],
-        "electrode_pairs": [
+        "electrode_pairs": pairs,
+        "open_paths": open_paths,
+        "particle_sizes_um": list(PARTICLE_SIZES_UM),
+        "embedding_depth_um": 0.0,
+        "contact_margin_um": 0.0,
+        "post_step_policy": {"mode": "protrusion", "coverage_break_factor": 1.5},
+    }
+
+
+def _build_open_case(name: str) -> SyntheticCase:
+    """Single-electrode wire case used for open connectivity tests."""
+    blocks, terminal_a, terminal_b = _OPEN_SHAPES[name]
+    wire = _blocks(blocks)
+    electrode_masks = {"W": wire}
+    layer_masks = {
+        layer: (wire.copy() if layer == "M2" else np.zeros(SHAPE_YX, dtype=bool))
+        for layer, material, *_ in STACK
+        if material == "conductor"
+    }
+    manifest = _base_manifest(
+        name,
+        electrodes=[
+            {
+                "electrode_id": "W",
+                "layer_name": "M2",
+                "net_id": "N1",
+                "electrode_role": "DATA",
+                "path": "masks/electrode_W.png",
+            }
+        ],
+        layer_masks=layer_masks,
+        pairs=[],
+        open_paths=[
+            {
+                "path_id": "W_PATH",
+                "electrode": "W",
+                "terminal_a_yx_px": list(terminal_a),
+                "terminal_b_yx_px": list(terminal_b),
+            }
+        ],
+    )
+    return SyntheticCase(
+        name=name,
+        manifest=manifest,
+        layer_masks=layer_masks,
+        electrode_masks=electrode_masks,
+    )
+
+
+def build_case(name: str) -> SyntheticCase:
+    """Build one synthetic product manifest with its layer and electrode masks."""
+    if name in _OPEN_SHAPES:
+        return _build_open_case(name)
+    if name not in _CASES:
+        raise ValueError(f"알 수 없는 합성 case: {name!r} (허용: {', '.join(CASE_NAMES)})")
+    electrode_specs, pair_specs = _CASES[name]
+    electrode_masks = {spec[0]: _stripe(spec[4], spec[5]) for spec in electrode_specs}
+    layer_masks = {
+        layer: np.zeros(SHAPE_YX, dtype=bool)
+        for layer, material, *_ in STACK
+        if material == "conductor"
+    }
+    for spec in electrode_specs:
+        layer_masks[spec[1]] |= electrode_masks[spec[0]]
+
+    manifest = _base_manifest(
+        name,
+        electrodes=[
+            {
+                "electrode_id": spec[0],
+                "layer_name": spec[1],
+                "net_id": spec[2],
+                "electrode_role": spec[3],
+                "path": f"masks/electrode_{spec[0]}.png",
+            }
+            for spec in electrode_specs
+        ],
+        layer_masks=layer_masks,
+        pairs=[
             {
                 "pair_id": f"{a}__{b}",
                 "electrode_a": a,
@@ -150,11 +244,8 @@ def build_case(name: str) -> SyntheticCase:
             }
             for a, b, mode in pair_specs
         ],
-        "particle_sizes_um": list(PARTICLE_SIZES_UM),
-        "embedding_depth_um": 0.0,
-        "contact_margin_um": 0.0,
-        "post_step_policy": {"mode": "protrusion", "coverage_break_factor": 1.5},
-    }
+        open_paths=[],
+    )
     return SyntheticCase(
         name=name,
         manifest=manifest,
