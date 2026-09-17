@@ -10,7 +10,7 @@ import yaml
 from pydantic import ValidationError
 
 from particle_sim.errors import InputContractError
-from particle_sim.schema import ProductManifest
+from particle_sim.schema import ProductManifest, ScenarioConfig
 
 
 def load_manifest(path: Path) -> ProductManifest:
@@ -37,6 +37,30 @@ def load_manifest(path: Path) -> ProductManifest:
             product_id=product_id,
             file=str(path),
             field=loc,
+        ) from e
+
+
+def load_scenario_config(path: Path) -> ScenarioConfig:
+    """YAML 파일에서 산포 시나리오 설정을 로드한다."""
+    try:
+        with path.open("r", encoding="utf-8") as f:
+            data = yaml.safe_load(f)
+    except OSError as e:
+        raise InputContractError(
+            f"시나리오 파일을 읽을 수 없습니다: {e}", file=str(path)
+        ) from e
+    except yaml.YAMLError as e:
+        raise InputContractError(f"YAML 파싱 실패: {e}", file=str(path)) from e
+    if not isinstance(data, dict):
+        raise InputContractError("시나리오 설정은 mapping이어야 합니다", file=str(path))
+    try:
+        return ScenarioConfig.model_validate(data)
+    except ValidationError as e:
+        first = e.errors()[0]
+        raise InputContractError(
+            f"시나리오 설정 검증 실패: {first['msg']}",
+            file=str(path),
+            field=".".join(str(x) for x in first["loc"]),
         ) from e
 
 

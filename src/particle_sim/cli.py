@@ -66,6 +66,78 @@ def _simulate_nominal(args: argparse.Namespace) -> int:
     return 0
 
 
+def _simulate_probability(args: argparse.Namespace) -> int:
+    from particle_sim.pipeline import run_probability
+
+    result = run_probability(
+        Path(args.product_config),
+        Path(args.scenario_config),
+        Path(args.output),
+        sobol_exponent_m=args.sobol_m,
+        seed=args.seed,
+    )
+    _print_json(
+        {
+            "status": "ok",
+            "run_id": result.run_id,
+            "scenario_count": result.scenario_count,
+            "outputs": {
+                "probability": str(result.probability),
+                "ca_table": str(result.ca_table),
+                "union_table": str(result.union_table),
+                "convergence": str(result.convergence),
+                "run_manifest": str(result.run_manifest),
+            },
+        }
+    )
+    return 0
+
+
+def _apply_fab(args: argparse.Namespace) -> int:
+    import pandas as pd
+
+    from particle_sim.aggregation.fab_weighting import apply_fab_weighting
+    from particle_sim.io.fab import load_fab_table
+
+    ca = pd.read_parquet(Path(args.ca))
+    table = load_fab_table(Path(args.fab_data), bin_method=args.bin_method)
+    manifest = load_manifest(Path(args.product_config))
+    modes = ["common", "actual"] if args.mode == "both" else [args.mode]
+    frames = []
+    for mode in modes:
+        frames.append(
+            apply_fab_weighting(
+                ca,
+                table,
+                weighting_mode=mode,
+                fab_id=args.reference_fab if mode == "common" else manifest.fab_id,
+                product_family=manifest.product_family,
+                run_id=str(ca["run_id"].iloc[0]) if len(ca) else "",
+                product_id=manifest.product_id,
+                require_full_coverage=not args.allow_missing_bins,
+            )
+        )
+    weighted = pd.concat(frames, ignore_index=True)
+    output = Path(args.output)
+    output.parent.mkdir(parents=True, exist_ok=True)
+    weighted.to_parquet(output, index=False, engine="pyarrow")
+    _print_json(
+        {
+            "status": "ok",
+            "output": str(output),
+            "rows": int(len(weighted)),
+            "modes": modes,
+            "expected_defect_count": {
+                mode: float(
+                    weighted[weighted["weighting_mode"] == mode]["expected_defect_count"].sum()
+                )
+                for mode in modes
+            },
+        }
+    )
+    return 0
+
+
 def _export_simcompare(args: argparse.Namespace) -> int:
     import csv
 
@@ -110,6 +182,33 @@ def build_parser() -> argparse.ArgumentParser:
     nominal.add_argument("--product-config", required=True, help="제품 manifest YAML 경로")
     nominal.add_argument("--output", required=True, help="실행 결과 디렉터리(비어 있어야 함)")
     nominal.set_defaults(func=_simulate_nominal)
+
+    probability = subparsers.add_parser(
+        "simulate-probability", help="공정 산포를 반영한 확률 hotspot과 CA를 계산한다"
+    )
+    probability.add_argument("--product-config", required=True, help="제품 manifest YAML 경로")
+    probability.add_argument("--scenario-config", required=True, help="산포 시나리오 YAML 경로")
+    probability.add_argument("--sobol-m", type=int, required=True, help="Sobol 지수 m (2^m 조건)")
+    probability.add_argument("--seed", type=int, required=True, help="난수 seed")
+    probability.add_argument("--output", required=True, help="실행 결과 디렉터리(비어 있어야 함)")
+    probability.set_defaults(func=_simulate_probability)
+
+    fab = subparsers.add_parser("apply-fab", help="CA에 Fab 이물 분포를 곱해 기대 위험을 만든다")
+    fab.add_argument("--ca", required=True, help="simulate-* 결과의 ca.parquet 경로")
+    fab.add_argument("--fab-data", required=True, help="Fab 이물 표(parquet/csv) 경로")
+    fab.add_argument("--product-config", required=True, help="제품 manifest YAML 경로")
+    fab.add_argument(
+        "--bin-method", required=True,
+        choices=["exact_point", "piecewise_constant", "piecewise_linear", "empirical_samples"],
+        help="Fab 크기 bin 연결 방식(기본값 없음)",
+    )
+    fab.add_argument("--mode", default="both", choices=["common", "actual", "both"],
+                     help="공통 기준 Fab, 실제 Fab 또는 둘 다")
+    fab.add_argument("--reference-fab", default="", help="common 모드에서 쓸 기준 Fab ID")
+    fab.add_argument("--allow-missing-bins", action="store_true",
+                     help="연결되지 않은 크기 bin이 있어도 계산을 계속한다")
+    fab.add_argument("--output", required=True, help="가중 결과 parquet 경로")
+    fab.set_defaults(func=_apply_fab)
 
     export = subparsers.add_parser(
         "export-simcompare", help="실행 결과를 simcompare 입력 형식으로 내보낸다"

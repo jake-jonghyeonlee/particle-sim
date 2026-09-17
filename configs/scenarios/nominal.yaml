@@ -1,0 +1,15 @@
+# 합성 fixture용 예시 산포 설정. 실제 측정값이 아니므로 evidence=assumed 이다.
+schema_version: "1.0"
+assumption_set: nominal
+evidence: assumed
+thickness_delta_um:
+  GI: {mean: 0.0, sigma: 0.02}
+  M2: {mean: 0.0, sigma: 0.015}
+  PLN: {mean: 0.0, sigma: 0.10}
+overlay_um:
+  M2: {mean: 0.0, sigma: 0.15}
+  M3: {mean: 0.0, sigma: 0.20}
+cd_bias_um:
+  M2: {mean: 0.0, sigma: 0.05}
+particle_diameter_delta_um: {mean: 0.0, sigma: 0.20}
+center_offset_um: {mean: 0.0, sigma: 0.10}

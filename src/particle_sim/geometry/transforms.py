@@ -12,15 +12,21 @@ from particle_sim.uncertainty.sampler import Scenario
 
 
 def signed_distance_um(mask: np.ndarray, grid: GridSpec) -> np.ndarray:
-    """Negative inside the mask, positive outside, in micrometres."""
+    """Distance from each pixel centre to the mask edge: negative inside, positive outside.
+
+    `distance_transform_edt` measures the distance to the nearest pixel centre of the other
+    phase, while the drawn edge sits half a pixel before it, so half a pixel is removed.
+    `signed_distance_um(mask) <= 0` therefore reproduces the original mask exactly.
+    """
     sampling = (grid.pixel_size_y_um, grid.pixel_size_x_um)
     if not mask.any():
         return np.full(mask.shape, np.inf, dtype=np.float64)
     if mask.all():
         return np.full(mask.shape, -np.inf, dtype=np.float64)
-    outside = distance_transform_edt(~mask, sampling=sampling)
-    inside = distance_transform_edt(mask, sampling=sampling)
-    return outside - inside
+    half_pixel_um = 0.5 * min(grid.pixel_size_y_um, grid.pixel_size_x_um)
+    outside = distance_transform_edt(~mask, sampling=sampling) - half_pixel_um
+    inside = distance_transform_edt(mask, sampling=sampling) - half_pixel_um
+    return np.where(mask, -inside, outside)
 
 
 def transform_mask(
@@ -52,7 +58,8 @@ def transform_mask(
         order=1,
         mode="nearest",
     )
-    return shifted <= -cd_bias_um
+    # signed distance <= 0 is the original mask; a positive bias grows it outwards
+    return shifted <= cd_bias_um
 
 
 def apply_scenario_to_masks(

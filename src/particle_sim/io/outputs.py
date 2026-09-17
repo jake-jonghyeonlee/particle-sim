@@ -27,6 +27,10 @@ UNION_CA_COLUMNS: tuple[str, ...] = (
     "ca_pair_sum_nominal_um2", "assumption_set", "simulator_version",
 )
 VALUE_SEMANTICS = "binary geometric contact risk (not failure probability)"
+PROBABILITY_SEMANTICS = (
+    "process-variation-conditioned geometric contact risk in [0, 1] "
+    "(not an actual failure probability)"
+)
 
 
 def write_table(rows: list[dict], columns: tuple[str, ...], path: Path) -> None:
@@ -135,6 +139,79 @@ class HotspotStore:
         index = (step_index, size_index, union_index)
         self._group["union_failure"][index] = np.asarray(any_failure, dtype=np.uint8)
         self._group["union_pair_count"][index] = np.asarray(pair_count, dtype=np.uint16)
+
+
+class ProbabilityStore:
+    """Zarr v3 store for probability hotspots, mean margins and union probabilities."""
+
+    def __init__(
+        self,
+        path: Path,
+        *,
+        source_steps: list[str],
+        particle_sizes_um: list[float],
+        unit_ids: list[str],
+        unit_modes: list[str],
+        union_keys: list[str],
+        shape_yx: tuple[int, int],
+    ) -> None:
+        if len(unit_ids) != len(unit_modes):
+            raise ValueError("unit_ids와 unit_modes의 길이가 다릅니다")
+        self.path = Path(path)
+        self.shape_yx = shape_yx
+        self._counts = (len(source_steps), len(particle_sizes_um))
+        self._unit_count = len(unit_ids)
+        self._union_count = len(union_keys)
+        chunks = (1, 1, 1, min(512, shape_yx[0]), min(512, shape_yx[1]))
+        group = zarr.open_group(self.path, mode="w-")
+        unit_shape = (len(source_steps), len(particle_sizes_um), len(unit_ids), *shape_yx)
+        union_shape = (len(source_steps), len(particle_sizes_um), len(union_keys), *shape_yx)
+        group.create_array("probability", shape=unit_shape, dtype="float32", chunks=chunks,
+                           fill_value=float("nan"))
+        group.create_array("contact_margin_mean_um", shape=unit_shape, dtype="float32",
+                           chunks=chunks, fill_value=float("nan"))
+        group.create_array("union_probability", shape=union_shape, dtype="float32",
+                           chunks=chunks, fill_value=float("nan"))
+        group.attrs["axes"] = ["source_step", "particle_size_um", "unit_or_union", "y", "x"]
+        group.attrs["source_steps"] = list(source_steps)
+        group.attrs["particle_sizes_um"] = [float(s) for s in particle_sizes_um]
+        group.attrs["unit_ids"] = list(unit_ids)
+        group.attrs["unit_modes"] = list(unit_modes)
+        group.attrs["union_keys"] = list(union_keys)
+        group.attrs["units"] = {"length": "um", "margin": "um"}
+        group.attrs["value_semantics"] = PROBABILITY_SEMANTICS
+        self._group = group
+
+    def _check(self, array: np.ndarray, step_index: int, size_index: int, third: int,
+               limit: int) -> None:
+        if tuple(array.shape) != tuple(self.shape_yx):
+            raise ValueError(f"map shape {array.shape} != {self.shape_yx}")
+        for name, value, bound in (
+            ("step_index", step_index, self._counts[0]),
+            ("size_index", size_index, self._counts[1]),
+            ("unit_or_union_index", third, limit),
+        ):
+            if not 0 <= value < bound:
+                raise ValueError(f"{name}={value}가 범위 [0, {bound})를 벗어났습니다")
+
+    def write_unit(self, step_index: int, size_index: int, unit_index: int, *,
+                   probability: np.ndarray, margin_mean_um: np.ndarray) -> None:
+        for array in (probability, margin_mean_um):
+            self._check(np.asarray(array), step_index, size_index, unit_index,
+                        self._unit_count)
+        index = (step_index, size_index, unit_index)
+        self._group["probability"][index] = np.asarray(probability, dtype=np.float32)
+        self._group["contact_margin_mean_um"][index] = np.asarray(
+            margin_mean_um, dtype=np.float32
+        )
+
+    def write_union(self, step_index: int, size_index: int, union_index: int, *,
+                    probability: np.ndarray) -> None:
+        self._check(np.asarray(probability), step_index, size_index, union_index,
+                    self._union_count)
+        self._group["union_probability"][(step_index, size_index, union_index)] = np.asarray(
+            probability, dtype=np.float32
+        )
 
 
 REQUIRED_RUN_MANIFEST_KEYS: tuple[str, ...] = (
