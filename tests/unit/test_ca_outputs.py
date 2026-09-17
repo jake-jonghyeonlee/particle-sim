@@ -116,3 +116,25 @@ def test_run_manifest_and_helpers(tmp_path: Path) -> None:
     tiff_path = tmp_path / "m.tif"
     write_float_tiff(np.array([[0.5, 1.5]]), tiff_path)
     assert tifffile.imread(str(tiff_path)).dtype == np.float32
+
+
+def test_hotspot_store_rejects_out_of_range_index(tmp_path: Path) -> None:
+    store = HotspotStore(
+        tmp_path / "bounds.zarr",
+        source_steps=["S1"],
+        particle_sizes_um=[2.0],
+        pair_ids=["A__B"],
+        pair_modes=["lateral_short"],
+        union_keys=["lateral_short", "any"],
+        shape_yx=(4, 4),
+    )
+    failure = np.zeros((4, 4), dtype=bool)
+    margin = np.zeros((4, 4), dtype=np.float32)
+    with pytest.raises(ValueError, match="step_index"):
+        store.write_pair(5, 0, 0, legacy=failure, nominal=failure, margin_um=margin)
+    with pytest.raises(ValueError, match="size_index"):
+        store.write_pair(0, 3, 0, legacy=failure, nominal=failure, margin_um=margin)
+    with pytest.raises(ValueError, match="pair_or_union_index"):
+        store.write_pair(0, 0, 2, legacy=failure, nominal=failure, margin_um=margin)
+    with pytest.raises(ValueError, match="pair_or_union_index"):
+        store.write_union(0, 0, 9, any_failure=failure, pair_count=failure.astype(np.uint16))

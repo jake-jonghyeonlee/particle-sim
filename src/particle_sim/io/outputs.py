@@ -62,6 +62,9 @@ class HotspotStore:
             raise ValueError("pair_ids와 pair_modes의 길이가 다릅니다")
         self.path = Path(path)
         self.shape_yx = shape_yx
+        self._counts = (len(source_steps), len(particle_sizes_um))
+        self._pair_count = len(pair_ids)
+        self._union_count = len(union_keys)
         chunks = (1, 1, 1, min(512, shape_yx[0]), min(512, shape_yx[1]))
         group = zarr.open_group(self.path, mode="w-")
         pair_shape = (len(source_steps), len(particle_sizes_um), len(pair_ids), *shape_yx)
@@ -90,6 +93,15 @@ class HotspotStore:
         if tuple(array.shape) != tuple(self.shape_yx):
             raise ValueError(f"map shape {array.shape} != {self.shape_yx}")
 
+    def _check_index(self, step_index: int, size_index: int, third: int, limit: int) -> None:
+        for name, value, bound in (
+            ("step_index", step_index, self._counts[0]),
+            ("size_index", size_index, self._counts[1]),
+            ("pair_or_union_index", third, limit),
+        ):
+            if not 0 <= value < bound:
+                raise ValueError(f"{name}={value}가 범위 [0, {bound})를 벗어났습니다")
+
     def write_pair(
         self,
         step_index: int,
@@ -100,6 +112,7 @@ class HotspotStore:
         nominal: np.ndarray,
         margin_um: np.ndarray,
     ) -> None:
+        self._check_index(step_index, size_index, pair_index, self._pair_count)
         for array in (legacy, nominal, margin_um):
             self._check(np.asarray(array))
         index = (step_index, size_index, pair_index)
@@ -116,6 +129,7 @@ class HotspotStore:
         any_failure: np.ndarray,
         pair_count: np.ndarray,
     ) -> None:
+        self._check_index(step_index, size_index, union_index, self._union_count)
         for array in (any_failure, pair_count):
             self._check(np.asarray(array))
         index = (step_index, size_index, union_index)

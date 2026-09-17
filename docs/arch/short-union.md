@@ -27,7 +27,7 @@ class PairResult:
 def lateral_short(manifest: ProductManifest, pair: ElectrodePair,
                   contacts: dict[str, ContactResult]) -> PairResult
 ```
-Re-check (InputContractError, field=f"electrode_pairs[{pair.pair_id}]"): mode is
+Re-check in this order (InputContractError, field=f"electrode_pairs[{pair.pair_id}]"): mode is
 lateral_short, both electrodes exist, same layer_name, different net_id, contacts present.
 classification: `"direct_geometric_contact"`.
 

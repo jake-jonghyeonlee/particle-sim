@@ -67,7 +67,7 @@ def build_run_manifest(*, run_id: str, product_id: str, design_version: str,
                        created_at: datetime, git_commit: str | None = None) -> dict
 # adds "schema_version", "simulator_version" (particle_sim.__version__),
 # "created_at" ISO-8601 UTC, "units": {"length": "um", "area": "um2"},
-# "random_seed": None, "sobol_exponent_m": None
+# "random_seed": None, "sobol_exponent_m": None, "value_semantics" (the store wording)
 def write_json(data: dict, path: Path) -> None   # indent=2, ensure_ascii=False, sort_keys=True
 def write_float_tiff(array: np.ndarray, path: Path) -> None   # tifffile.imwrite float32
 ```

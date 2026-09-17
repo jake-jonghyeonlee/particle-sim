@@ -50,20 +50,8 @@ def build_pair_result(
                 product_id=manifest.product_id,
                 field=field,
             )
-        if electrode_id not in contacts:
-            raise InputContractError(
-                f"pair '{pair.pair_id}'의 전극 '{electrode_id}' 접촉 결과가 없습니다",
-                product_id=manifest.product_id,
-                field=field,
-            )
     ea = electrodes[pair.electrode_a]
     eb = electrodes[pair.electrode_b]
-    if ea.net_id == eb.net_id:
-        raise InputContractError(
-            f"pair '{pair.pair_id}'의 두 전극 net_id가 같습니다: {ea.net_id}",
-            product_id=manifest.product_id,
-            field=field,
-        )
     if same_layer and ea.layer_name != eb.layer_name:
         raise InputContractError(
             f"lateral_short pair '{pair.pair_id}'의 두 전극은 같은 layer여야 합니다",
@@ -76,6 +64,19 @@ def build_pair_result(
             product_id=manifest.product_id,
             field=field,
         )
+    if ea.net_id == eb.net_id:
+        raise InputContractError(
+            f"pair '{pair.pair_id}'의 두 전극 net_id가 같습니다: {ea.net_id}",
+            product_id=manifest.product_id,
+            field=field,
+        )
+    for electrode_id in (pair.electrode_a, pair.electrode_b):
+        if electrode_id not in contacts:
+            raise InputContractError(
+                f"pair '{pair.pair_id}'의 전극 '{electrode_id}' 접촉 결과가 없습니다",
+                product_id=manifest.product_id,
+                field=field,
+            )
 
     contact_a = contacts[pair.electrode_a]
     contact_b = contacts[pair.electrode_b]
