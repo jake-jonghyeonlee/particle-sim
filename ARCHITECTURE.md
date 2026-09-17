@@ -35,5 +35,26 @@ Known approximations (reported as TODO_PHYSICS, not hidden):
   / wrap_contact
 - vertical results are potential_vertical_short until process calibration
 
-Deferred to phase 2 (interfaces only): open connectivity, Sobol variation and probability
-hotspots, convergence, Fab weighting (common / actual), tile + halo.
+## Phase 2 modules
+
+| module | role |
+|---|---|
+| `failure/open_failure` | terminal connectivity, skeleton+terminal candidate reduction, proxy fallback |
+| `units` | one view over pairs and open paths (`lateral_open`, electrode_b = "N/A") |
+| `uncertainty/transforms`, `uncertainty/sampler` | inverse-CDF transforms, deterministic variable order, Sobol scenarios |
+| `geometry/transforms` | scenario overlay / CD bias (signed distance field), thickness delta, scalar overrides |
+| `aggregation/probability` | per-pixel failure counts, probability map, CA percentiles |
+| `validation/convergence` | CA against scenario count, caller-provided tolerance |
+| `io/fab`, `aggregation/fab_weighting` | Fab table validation and common / actual weighting |
+| `pipeline.run_probability` | scenario loop, probability store, CA and convergence tables |
+| `visualization` | probability map, convergence and Fab comparison figures |
+
+```text
+manifest + scenario.yaml -> build_scenarios (Sobol, deterministic order)
+  -> per scenario: transform masks/stack/scalars -> evaluate_units -> accumulate counts
+  -> probability map + CA percentiles + convergence prefixes (64/128/256)
+  -> optional: apply_fab_weighting(CA, fab table) -> common / actual expected defect count
+```
+
+Still deferred: tile + halo for very large ROIs, empirical Fab size samples, electrical
+calibration of vertical shorts.

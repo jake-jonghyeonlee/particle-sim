@@ -1,10 +1,12 @@
 # particle-sim
 
 층별 전극 마스크와 적층 두께로 **이물 발생 공정(source step)·이물 크기별** 2.5D 기하 접촉 위험
-hotspot과 Critical Area(CA)를 계산하는 시뮬레이터다. 1차 범위는 Phase 0~3이다.
+hotspot과 Critical Area(CA)를 계산하는 시뮬레이터다. Phase 0~3(명목 조건)과
+Phase 2(open 연결성, 공정 산포 확률, Fab 가중)를 제공한다.
 
 > 출력값은 **기하 접촉 위험(geometric contact risk)**이며 실제 불량확률이 아니다.
-> 산포(Sobol), open 연결성 판정, Fab 분포 가중은 2차 범위다.
+> 확률값은 입력한 산포 모델에 조건부이며, 산포가 실제 공정값이 아니면 결과도 실제 Fab
+> 불량확률이 아니다.
 
 - 전역 규칙: [SPEC.md](SPEC.md)
 - 모듈 구조와 데이터 흐름: [ARCHITECTURE.md](ARCHITECTURE.md)
@@ -27,6 +29,16 @@ uv run particle-sim simulate-nominal --product-config work/case/manifest.yaml --
 uv run particle-sim export-simcompare --run work/run \
     --product-config work/case/manifest.yaml --output work/simcompare
 uv run particle-sim make-report --run work/run --product-config work/case/manifest.yaml
+
+# 공정 산포를 반영한 확률 hotspot (Sobol 2^m 조건)
+uv run particle-sim simulate-probability --product-config work/case/manifest.yaml \
+    --scenario-config configs/scenarios/nominal.yaml --sobol-m 7 --seed 42 --output work/prob
+uv run particle-sim make-report --run work/prob --product-config work/case/manifest.yaml
+
+# Fab 이물 분포 가중 (합성 Fab 표는 make-synthetic이 함께 만든다)
+uv run particle-sim apply-fab --ca work/prob/ca.parquet --fab-data work/case/fab_particles.csv \
+    --product-config work/case/manifest.yaml --bin-method piecewise_constant \
+    --mode both --reference-fab FAB_REF --output work/prob/fab_risk.parquet
 ```
 
 합성 case는 `parallel_lines`, `vertical_aligned`, `diagonal_offset`, `triple_overlap`, `pilot`이다.
@@ -42,7 +54,12 @@ uv run particle-sim make-report --run work/run --product-config work/case/manife
 - `electrodes`: 레이어별로 분리된 전극 마스크와 net ID. 같은 레이어 전극의 합집합은 레이어 마스크와 일치해야 한다
 - `particle_source_steps`: 이물이 어느 공정 표면에 떨어지는지와 표면 모델(flat/conformal/partial)
 - `electrode_pairs`: lateral_short / vertical_short 판정 대상
+- `open_paths`: open 판정 대상 전극과 단자. 단자가 없으면 `fallback`을 명시해야 하며 결과는
+  `open_proxy`로 표시된다
 - `embedding_depth_um`, `contact_margin_um`, `post_step_policy`: 미확정 물리값. 기본값 없이 명시해야 한다
+
+산포 시나리오는 별도 YAML이다(`configs/scenarios/*.yaml`). `evidence: measured|assumed`가
+필수이며 `assumed`면 결과 경고에 그대로 남는다. 모든 산포가 0이면 확률 결과는 nominal과 일치한다.
 
 마스크는 0/1 또는 0/255 이진 PNG·TIFF만 허용한다. resize·anti-alias된 표시용 이미지는 거부한다.
 
@@ -59,6 +76,16 @@ uv run particle-sim make-report --run work/run --product-config work/case/manife
 | `run_manifest.json` | config hash, 입력 파일 hash, TODO_PHYSICS 경고, 단위, 버전 |
 | `report/` | 그림과 한국어 보고서(`make-report`) |
 
+`simulate-probability` 결과 디렉터리:
+
+| 파일 | 내용 |
+|---|---|
+| `probability.zarr` | `probability`, `contact_margin_mean_um` `[step, size, unit, y, x]`와 `union_probability` |
+| `ca.parquet` | 단위별 nominal CA와 확률 CA 평균·p05·p50·p95, scenario_count, convergence_delta |
+| `ca_union.parquet` | 불량 종류별·전체 합집합 확률 CA |
+| `convergence.csv` | 64/128/256 조건에서의 CA와 직전 대비 상대 변화 |
+| `run_manifest.json` | seed, Sobol m, 시나리오 수, 산포 근거 경고 |
+
 `export-simcompare`는 [particle-sim-compare](https://github.com/jake-jonghyeonlee/particle-sim-compare)의
 adapter 입력 형식(`bundles.csv`, `layouts.csv`, `hotspots.csv`, `ca_records.csv`,
 `layer_stack.csv`, `geometry.json`, `provenance.json`, `arrays/*.npy`)으로 내보낸다.
@@ -72,3 +99,8 @@ Fab 자료(`fab.json` / `fab_measurements.csv`)는 생성하지 않으며 `expor
   `exclude`(엄격) / `protrusion`(돌출·피복 모델) / `wrap_contact`(보수).
 - vertical 결과는 보정 전까지 `potential_vertical_short`로만 표기한다.
 - 미확정 물리값은 설정 필수값이며 `TODO_PHYSICS` 경고로 결과에 남는다.
+- Open은 단순 겹침이 아니라 단자 간 연결성으로 판정한다. 후보 축소는 전수 계산과 동일한 결과를
+  내는지 테스트로 확인한다.
+- 수렴 허용 오차는 코드에 고정하지 않는다. `convergence.csv`를 보고 사람이 정한다.
+- Fab 분포는 geometry 계산이 끝난 뒤에만 적용한다. 크기 bin 정의·단위·조사 면적이 불명확하면
+  가중 계산을 중단한다.
