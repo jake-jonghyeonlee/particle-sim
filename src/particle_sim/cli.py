@@ -39,10 +39,19 @@ def _validate_input(args: argparse.Namespace) -> int:
 
 
 def _make_synthetic(args: argparse.Namespace) -> int:
-    from particle_sim.validation.synthetic_cases import build_case, write_case
+    from particle_sim.validation.synthetic_cases import build_case, write_case, write_fab_table
 
     manifest_path = write_case(build_case(args.case), Path(args.output))
-    _print_json({"status": "ok", "case": args.case, "manifest": str(manifest_path)})
+    fab_path = write_fab_table(Path(args.output))
+    _print_json(
+        {
+            "status": "ok",
+            "case": args.case,
+            "manifest": str(manifest_path),
+            "fab_table": str(fab_path),
+            "note": "합성 자료이며 실제 측정값이 아닙니다",
+        }
+    )
     return 0
 
 

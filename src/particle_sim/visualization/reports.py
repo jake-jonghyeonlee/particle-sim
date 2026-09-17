@@ -16,8 +16,11 @@ from particle_sim.io.outputs import check_run_manifest, open_hotspot_store
 from particle_sim.io.stack import build_stack_z
 from particle_sim.visualization.hotspots import (
     plot_ca_curves,
+    plot_convergence,
+    plot_fab_comparison,
     plot_layout_overlay,
     plot_pair_panels,
+    plot_probability_map,
     plot_union_vs_sum,
 )
 
@@ -55,8 +58,14 @@ def _prepare_report_dir(report_dir: Path, product_id: str) -> None:
     report_dir.mkdir()
 
 
+def _is_probability_run(run_dir: Path) -> bool:
+    return (run_dir / "probability.zarr").exists()
+
+
 def make_report(run_dir: Path, manifest_path: Path) -> Path:
     run_dir = Path(run_dir)
+    if _is_probability_run(run_dir):
+        return make_probability_report(run_dir, manifest_path)
     manifest_path = Path(manifest_path)
     manifest = load_manifest(manifest_path)
     product_id = manifest.product_id
@@ -172,6 +181,138 @@ def make_report(run_dir: Path, manifest_path: Path) -> Path:
              float(r.ca_pair_sum_nominal_um2)]
             for r in union_rows.itertuples(index=False)
         ],
+    )
+    lines += ["", "## 그림", ""]
+    for title, name in figures:
+        lines += [f"### {title}", "", f"![{title}]({name})", ""]
+    report_path = report_dir / "report.md"
+    report_path.write_text("\n".join(lines), encoding="utf-8")
+    return report_path
+
+
+def make_probability_report(run_dir: Path, manifest_path: Path) -> Path:
+    """Report for a `simulate-probability` run: probability maps and convergence."""
+    run_dir = Path(run_dir)
+    manifest_path = Path(manifest_path)
+    manifest = load_manifest(manifest_path)
+    product_id = manifest.product_id
+    try:
+        run_manifest = json.loads((run_dir / "run_manifest.json").read_text(encoding="utf-8"))
+        ca = pd.read_parquet(run_dir / "ca.parquet")
+        union = pd.read_parquet(run_dir / "ca_union.parquet")
+        convergence = pd.read_csv(run_dir / "convergence.csv")
+        store = open_hotspot_store(run_dir / "probability.zarr")
+    except (OSError, ValueError) as exc:
+        raise InputContractError(
+            f"실행 결과를 읽을 수 없습니다: {exc}",
+            product_id=product_id,
+            file=str(run_dir),
+            field="run",
+        ) from exc
+    missing = check_run_manifest(run_manifest)
+    if missing:
+        raise InputContractError(
+            f"run manifest에 필수 필드가 없습니다: {missing}",
+            product_id=product_id,
+            file=str(run_dir / "run_manifest.json"),
+            field=missing[0],
+        )
+    masks = load_product_masks(manifest, manifest_path)
+    stack_z = build_stack_z(manifest)
+    report_dir = run_dir / "report"
+    _prepare_report_dir(report_dir, product_id)
+
+    step_ids = list(store.attrs["source_steps"])
+    sizes = [float(s) for s in store.attrs["particle_sizes_um"]]
+    unit_ids = list(store.attrs["unit_ids"])
+    union_keys = list(store.attrs["union_keys"])
+    largest_index = int(np.argmax(sizes))
+    largest = sizes[largest_index]
+    figures: list[tuple[str, str]] = []
+
+    patterned = [name for name, layer in stack_z.items() if layer.patterned]
+    plot_layout_overlay(masks, patterned, report_dir / "layout_overlay.png")
+    figures.append(("Layout overlay", "layout_overlay.png"))
+    for step_index, step_id in enumerate(step_ids):
+        name = f"ca_curve_{step_id}.png"
+        plot_ca_curves(
+            ca.assign(ca_nominal_um2=ca["ca_mean_um2"], ca_legacy_um2=ca["ca_nominal_um2"]),
+            step_id,
+            report_dir / name,
+        )
+        figures.append((f"{step_id} 크기별 확률 CA(실선)와 nominal CA(점선)", name))
+        name = f"convergence_{step_id}.png"
+        plot_convergence(convergence, step_id, report_dir / name)
+        figures.append((f"{step_id} 시나리오 수에 따른 CA 수렴", name))
+        for unit_index, unit_id in enumerate(unit_ids):
+            name = f"probability_{step_id}_{unit_id}_d{largest:g}.png"
+            plot_probability_map(
+                store["probability"][step_index, largest_index, unit_index],
+                masks.grid,
+                f"{step_id} / {unit_id} / d={largest:g} um",
+                report_dir / name,
+            )
+            figures.append((f"{step_id} {unit_id} d={largest:g} um 확률 hotspot", name))
+        name = f"union_probability_{step_id}_d{largest:g}.png"
+        plot_probability_map(
+            store["union_probability"][step_index, largest_index, union_keys.index("any")],
+            masks.grid,
+            f"{step_id} / union any / d={largest:g} um",
+            report_dir / name,
+        )
+        figures.append((f"{step_id} 전체 합집합 확률 hotspot", name))
+
+    fab_path = run_dir / "fab_risk.parquet"
+    if fab_path.is_file():
+        weighted = pd.read_parquet(fab_path)
+        plot_fab_comparison(weighted, report_dir / "fab_comparison.png")
+        figures.append(("공통 Fab vs 실제 Fab 가중", "fab_comparison.png"))
+
+    lines = [
+        f"# particle-sim 확률 결과 보고서: {product_id}",
+        "",
+        f"> {NOTICE}. 확률값은 입력한 산포 모델에 조건부이며, 산포가 실제 공정값이 아니면 "
+        "결과도 실제 Fab 불량확률이 아닙니다.",
+        "",
+        f"- run_id: `{run_manifest['run_id']}`",
+        f"- simulator_version: `{run_manifest['simulator_version']}`",
+        f"- config_hash: `{run_manifest['config_hash']}`",
+        f"- assumption_set: `{run_manifest['assumption_set']}`",
+        f"- 시나리오 수: `{run_manifest.get('scenario_count')}` "
+        f"(Sobol m=`{run_manifest.get('sobol_exponent_m')}`, seed=`{run_manifest.get('random_seed')}`)",
+        "",
+        "## TODO_PHYSICS / 가정",
+        "",
+    ]
+    lines.extend(f"- {warning}" for warning in run_manifest.get("warnings", []))
+    lines += ["", f"## 단위별 확률 CA (d={largest:g} um)", ""]
+    ca_rows = ca[np.isclose(ca["particle_size_um"].astype(float), largest)]
+    lines += _table(
+        ["source_step", "pair_id", "failure_mode", "ca_nominal_um2", "ca_mean_um2",
+         "ca_p05_um2", "ca_p95_um2", "scenario_count", "convergence_delta"],
+        [
+            [r.source_step, r.pair_id, r.failure_mode, float(r.ca_nominal_um2),
+             float(r.ca_mean_um2), float(r.ca_p05_um2), float(r.ca_p95_um2),
+             int(r.scenario_count), float(r.convergence_delta)]
+            for r in ca_rows.itertuples(index=False)
+        ],
+    )
+    lines += ["", f"## 합집합 확률 CA (d={largest:g} um)", ""]
+    union_rows = union[np.isclose(union["particle_size_um"].astype(float), largest)]
+    lines += _table(
+        ["source_step", "failure_mode", "pair_ids", "ca_union_nominal_um2",
+         "ca_pair_sum_nominal_um2"],
+        [
+            [r.source_step, r.failure_mode, r.pair_ids, float(r.ca_union_nominal_um2),
+             float(r.ca_pair_sum_nominal_um2)]
+            for r in union_rows.itertuples(index=False)
+        ],
+    )
+    lines += ["", "## 수렴", "",
+              "허용 오차는 코드에 고정하지 않습니다. pilot 결과를 보고 정한 값으로 판단합니다.", ""]
+    lines += _table(
+        list(convergence.columns),
+        [list(row) for row in convergence.itertuples(index=False)][:60],
     )
     lines += ["", "## 그림", ""]
     for title, name in figures:

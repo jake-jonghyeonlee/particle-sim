@@ -123,3 +123,84 @@ def plot_union_vs_sum(union: pd.DataFrame, step_id: str, path: Path) -> Path:
     if len(rows):
         ax.legend(fontsize="small")
     return _save(fig, path)
+
+
+def plot_probability_map(
+    probability: np.ndarray, grid: GridSpec, title: str, path: Path
+) -> Path:
+    """Probability hotspot with a fixed 0..1 colour scale."""
+    fig, ax = plt.subplots(figsize=(6, 5))
+    image = ax.imshow(
+        np.asarray(probability, dtype=float),
+        cmap="magma",
+        vmin=0.0,
+        vmax=1.0,
+        extent=_extent(grid),
+        interpolation="nearest",
+    )
+    ax.set_title(title)
+    ax.set_xlabel("x (um)")
+    ax.set_ylabel("y (um)")
+    bar = fig.colorbar(image, ax=ax, fraction=0.046)
+    bar.set_label("geometric contact risk (0-1)")
+    return _save(fig, path)
+
+
+def plot_convergence(convergence: pd.DataFrame, step_id: str, path: Path) -> Path:
+    """CA against the scenario count for every unit of one source step."""
+    fig, ax = plt.subplots(figsize=(7, 5))
+    rows = convergence[convergence["source_step"] == step_id]
+    for index, (pair_id, group) in enumerate(rows.groupby("pair_id", sort=False)):
+        for size, sized in group.groupby("particle_size_um", sort=True):
+            sized = sized.sort_values("scenario_count")
+            ax.plot(
+                sized["scenario_count"],
+                sized["ca_um2"],
+                "-o",
+                color=LAYER_COLORS[index % len(LAYER_COLORS)],
+                alpha=0.4 + 0.6 * float(size) / float(group["particle_size_um"].max()),
+                label=f"{pair_id} d={size:g}um",
+            )
+    ax.set_xscale("log", base=2)
+    ax.set_xlabel("scenario count")
+    ax.set_ylabel("critical area (um^2)")
+    ax.set_title(f"CA convergence - source step {step_id}")
+    if len(rows):
+        ax.legend(fontsize="x-small", ncol=2)
+    return _save(fig, path)
+
+
+def plot_fab_comparison(weighted: pd.DataFrame, path: Path) -> Path:
+    """Expected defect count per source step for the common and actual Fab weighting."""
+    fig, ax = plt.subplots(figsize=(7, 5))
+    grouped = (
+        weighted.groupby(["weighting_mode", "source_step"])["expected_defect_count"]
+        .sum()
+        .reset_index()
+    )
+    steps = sorted(grouped["source_step"].unique())
+    positions = np.arange(len(steps), dtype=float)
+    modes = sorted(grouped["weighting_mode"].unique())
+    width = 0.8 / max(len(modes), 1)
+    for index, mode in enumerate(modes):
+        values = [
+            float(
+                grouped[(grouped["weighting_mode"] == mode)
+                        & (grouped["source_step"] == step)]["expected_defect_count"].sum()
+            )
+            for step in steps
+        ]
+        ax.bar(
+            positions + index * width,
+            values,
+            width=width,
+            color=LAYER_COLORS[index % len(LAYER_COLORS)],
+            label=f"{mode} Fab",
+        )
+    ax.set_xticks(positions + width * (len(modes) - 1) / 2)
+    ax.set_xticklabels(steps)
+    ax.set_ylabel("expected defect count (CA x density)")
+    ax.set_title("Common vs actual Fab weighting")
+    if modes:
+        ax.legend()
+    return _save(fig, path)

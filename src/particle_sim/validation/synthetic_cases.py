@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import csv
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -252,6 +253,50 @@ def build_case(name: str) -> SyntheticCase:
         layer_masks=layer_masks,
         electrode_masks=electrode_masks,
     )
+
+
+FAB_COLUMNS: tuple[str, ...] = (
+    "fab_id", "product_family", "source_step", "size_bin_left_um", "size_bin_right_um",
+    "size_representative_um", "particle_count", "inspection_area_mm2", "measurement_period",
+    "density_per_mm2", "particle_type",
+)
+# (fab_id, counts per representative size) — synthetic, not measured data.
+_FAB_COUNTS: dict[str, list[int]] = {
+    "FAB_SYN": [120, 60, 30, 12, 4],
+    "FAB_REF": [80, 40, 20, 10, 5],
+}
+FAB_INSPECTION_AREA_MM2 = 100.0
+
+
+def write_fab_table(out_dir: Path, *, file_name: str = "fab_particles.csv") -> Path:
+    """Write a synthetic Fab particle table covering every synthetic source step."""
+    out_dir = Path(out_dir)
+    out_dir.mkdir(parents=True, exist_ok=True)
+    path = out_dir / file_name
+    rows: list[dict[str, object]] = []
+    for fab_id, counts in _FAB_COUNTS.items():
+        for step_id, _layer, _model in STEPS:
+            for size, count in zip(PARTICLE_SIZES_UM, counts, strict=True):
+                rows.append(
+                    {
+                        "fab_id": fab_id,
+                        "product_family": "SYN",
+                        "source_step": step_id,
+                        "size_bin_left_um": size - 1.0,
+                        "size_bin_right_um": size + 1.0,
+                        "size_representative_um": size,
+                        "particle_count": count,
+                        "inspection_area_mm2": FAB_INSPECTION_AREA_MM2,
+                        "measurement_period": "2026-09 synthetic",
+                        "density_per_mm2": count / FAB_INSPECTION_AREA_MM2,
+                        "particle_type": "unknown",
+                    }
+                )
+    with path.open("w", newline="", encoding="utf-8") as handle:
+        writer = csv.DictWriter(handle, fieldnames=list(FAB_COLUMNS))
+        writer.writeheader()
+        writer.writerows(rows)
+    return path
 
 
 def _write_mask(path: Path, mask: np.ndarray) -> None:
