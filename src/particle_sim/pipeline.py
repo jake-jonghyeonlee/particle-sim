@@ -12,7 +12,7 @@ import numpy as np
 from particle_sim.aggregation.critical_area import critical_area_um2, normalized_ca, um2_to_mm2
 from particle_sim.config import canonical_hash, file_sha256, load_manifest
 from particle_sim.errors import InputContractError
-from particle_sim.failure.union import ANY_MODE, simulate_pairs, union_by_mode
+from particle_sim.failure.union import ANY_MODE, union_by_mode
 from particle_sim.geometry.contact import DistanceCache
 from particle_sim.geometry.legacy import legacy_short_hotspot
 from particle_sim.io.masks import load_product_masks
@@ -28,6 +28,7 @@ from particle_sim.io.outputs import (
 )
 from particle_sim.io.stack import build_stack_z
 from particle_sim.schema import todo_physics_warnings
+from particle_sim.units import NOT_APPLICABLE, OPEN_MODE, evaluate_units, unit_ids, unit_modes
 from particle_sim.validation.regression import explain_legacy_vs_edt
 
 LEGACY_COMPARISON_COLUMNS = (
@@ -79,12 +80,14 @@ def run_nominal(
     grid = masks.grid
     electrodes = {e.electrode_id: e for e in manifest.electrodes}
     pairs = list(manifest.electrode_pairs)
+    unit_id_list = unit_ids(manifest)
+    unit_mode_list = unit_modes(manifest)
     steps = list(manifest.particle_source_steps)
     sizes = list(manifest.particle_sizes_um)
     modes: list[str] = []
-    for pair in pairs:
-        if pair.failure_mode not in modes:
-            modes.append(pair.failure_mode)
+    for mode in unit_mode_list:
+        if mode not in modes:
+            modes.append(mode)
     union_keys = [*modes, ANY_MODE]
     assumption_set = manifest.post_step_policy.mode
 
@@ -104,8 +107,8 @@ def run_nominal(
         result.hotspots,
         source_steps=[s.step_id for s in steps],
         particle_sizes_um=sizes,
-        pair_ids=[p.pair_id for p in pairs],
-        pair_modes=[p.failure_mode for p in pairs],
+        pair_ids=unit_id_list,
+        pair_modes=unit_mode_list,
         union_keys=union_keys,
         shape_yx=grid.shape_yx,
     )
@@ -147,15 +150,17 @@ def run_nominal(
                 }
             )
 
-    pair_index_by_id = {p.pair_id: i for i, p in enumerate(pairs)}
+    pair_index_by_id = {unit_id: i for i, unit_id in enumerate(unit_id_list)}
+    empty_legacy = np.zeros(grid.shape_yx, dtype=bool)
     for step_index, step in enumerate(steps):
         for size_index, diameter in enumerate(sizes):
-            results = simulate_pairs(manifest, masks, stack_z, step.step_id, diameter, cache)
+            results = evaluate_units(manifest, masks, stack_z, step.step_id, diameter, cache)
             by_id = {r.pair_id: r for r in results}
             nominal_ca: dict[str, float] = {}
-            for pair_index, pair in enumerate(pairs):
-                pair_result = by_id[pair.pair_id]
-                legacy = legacy_cache[(size_index, pair_index)]
+            for pair_index, unit_id in enumerate(unit_id_list):
+                pair_result = by_id[unit_id]
+                legacy = legacy_cache.get((size_index, pair_index), empty_legacy)
+                is_open = pair_result.failure_mode == OPEN_MODE
                 store.write_pair(
                     step_index,
                     size_index,
@@ -165,9 +170,9 @@ def run_nominal(
                     margin_um=pair_result.pair_margin_um,
                 )
                 ca_nominal = critical_area_um2(pair_result.failure, grid)
-                nominal_ca[pair.pair_id] = ca_nominal
-                ea = electrodes[pair.electrode_a]
-                eb = electrodes[pair.electrode_b]
+                nominal_ca[unit_id] = ca_nominal
+                ea = electrodes[pair_result.electrode_a]
+                eb = None if is_open else electrodes[pair_result.electrode_b]
                 ca_rows.append(
                     {
                         "schema_version": SCHEMA_VERSION,
@@ -177,14 +182,16 @@ def run_nominal(
                         "source_step": step.step_id,
                         "fab_distribution_layer": step.fab_distribution_layer,
                         "particle_size_um": float(diameter),
-                        "pair_id": pair.pair_id,
-                        "electrode_a": pair.electrode_a,
-                        "electrode_b": pair.electrode_b,
+                        "pair_id": unit_id,
+                        "electrode_a": pair_result.electrode_a,
+                        "electrode_b": pair_result.electrode_b,
                         "net_a": ea.net_id,
-                        "net_b": eb.net_id,
-                        "failure_mode": pair.failure_mode,
+                        "net_b": NOT_APPLICABLE if eb is None else eb.net_id,
+                        "failure_mode": pair_result.failure_mode,
                         "classification": pair_result.classification,
-                        "ca_legacy_um2": critical_area_um2(legacy, grid),
+                        "ca_legacy_um2": (
+                            float("nan") if is_open else critical_area_um2(legacy, grid)
+                        ),
                         "ca_nominal_um2": ca_nominal,
                         "ca_nominal_mm2": um2_to_mm2(ca_nominal),
                         "ca_nominal_normalized": normalized_ca(ca_nominal, grid),
@@ -211,7 +218,9 @@ def run_nominal(
                 )
                 legacy_union = np.zeros(grid.shape_yx, dtype=bool)
                 for pair_id in union.pair_ids:
-                    legacy_union |= legacy_cache[(size_index, pair_index_by_id[pair_id])]
+                    legacy_key = (size_index, pair_index_by_id[pair_id])
+                    if legacy_key in legacy_cache:
+                        legacy_union |= legacy_cache[legacy_key]
                 ca_union = critical_area_um2(union.any_failure, grid)
                 union_rows.append(
                     {
