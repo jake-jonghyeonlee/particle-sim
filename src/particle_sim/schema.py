@@ -73,7 +73,8 @@ class OpenPath(BaseModel):
     electrode: str
     terminal_a_yx_px: tuple[int, int] | None = None
     terminal_b_yx_px: tuple[int, int] | None = None
-    fallback: Literal["error", "roi_boundary", "skeleton_cut"] = "error"
+    # skeleton_cut(중심선 절단 proxy)은 아직 구현하지 않아 스키마에서도 허용하지 않는다
+    fallback: Literal["error", "roi_boundary"] = "error"
 
     @model_validator(mode="after")
     def _check_terminals(self) -> OpenPath:
@@ -326,7 +327,7 @@ class ScenarioConfig(BaseModel):
     contact_margin_um: UniformSpec | None = None
 
     def is_degenerate(self) -> bool:
-        """모든 변수의 산포가 0이면 True. nominal 결과와 일치해야 한다."""
+        """산포가 모두 0이면 True(평균이 0이 아닌 고정 이동은 산포가 아니므로 허용한다)."""
         normals = [
             *self.thickness_delta_um.values(),
             *self.overlay_um.values(),
@@ -335,7 +336,7 @@ class ScenarioConfig(BaseModel):
         for spec in (self.particle_diameter_delta_um, self.center_offset_um):
             if spec is not None:
                 normals.append(spec)
-        if any(spec.sigma > 0.0 or spec.mean != 0.0 for spec in normals):
+        if any(spec.sigma > 0.0 for spec in normals):
             return False
         uniforms = list(self.planarization_factor.values())
         for spec in (self.embedding_depth_um, self.contact_margin_um):

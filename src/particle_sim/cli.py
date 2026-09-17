@@ -84,6 +84,7 @@ def _simulate_probability(args: argparse.Namespace) -> int:
         Path(args.output),
         sobol_exponent_m=args.sobol_m,
         seed=args.seed,
+        convergence_tolerance=args.convergence_tolerance,
     )
     _print_json(
         {
@@ -200,6 +201,10 @@ def build_parser() -> argparse.ArgumentParser:
     probability.add_argument("--sobol-m", type=int, required=True, help="Sobol 지수 m (2^m 조건)")
     probability.add_argument("--seed", type=int, required=True, help="난수 seed")
     probability.add_argument("--output", required=True, help="실행 결과 디렉터리(비어 있어야 함)")
+    probability.add_argument(
+        "--convergence-tolerance", type=float, default=None,
+        help="수렴 판정 허용 오차(예: 0.01). 지정하면 만족하지 못한 계열을 경고로 남긴다",
+    )
     probability.set_defaults(func=_simulate_probability)
 
     fab = subparsers.add_parser("apply-fab", help="CA에 Fab 이물 분포를 곱해 기대 위험을 만든다")

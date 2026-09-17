@@ -4,6 +4,7 @@ from pathlib import Path
 
 import numpy as np
 import pytest
+from pydantic import ValidationError
 
 from particle_sim.config import load_manifest
 from particle_sim.errors import InputContractError
@@ -124,9 +125,11 @@ def test_missing_terminals_use_proxy_or_fail(tmp_path: Path) -> None:
     assert classification == PROXY
     assert wire[terminal_a] and wire[terminal_b]
     assert terminal_a != terminal_b
-    unsupported = OpenPath(path_id="P", electrode="W", fallback="skeleton_cut")
-    with pytest.raises(InputContractError):
-        resolve_terminals(unsupported, wire, "SYN")
+    # a path without terminals must name a fallback; "error" keeps it fail-closed
+    with pytest.raises(ValidationError):
+        OpenPath(path_id="P", electrode="W")
+    with pytest.raises(ValidationError):
+        OpenPath(path_id="P", electrode="W", fallback="skeleton_cut")
 
 
 def test_terminal_outside_electrode_is_rejected(tmp_path: Path) -> None:

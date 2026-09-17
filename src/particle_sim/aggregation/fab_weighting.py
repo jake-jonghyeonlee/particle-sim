@@ -9,6 +9,7 @@ from __future__ import annotations
 import numpy as np
 import pandas as pd
 
+from particle_sim.aggregation.critical_area import um2_to_mm2
 from particle_sim.errors import InputContractError
 from particle_sim.io.fab import FabTable, fab_density_for
 
@@ -145,7 +146,7 @@ def apply_fab_weighting(
             ca_row = entry["row"]
             bin_row = entry["bin"]
             ca_um2 = float(ca_row[value_column])
-            ca_mm2 = ca_um2 * 1e-6
+            ca_mm2 = um2_to_mm2(ca_um2)
             density_value = float(entry["density_per_mm2"])
             rows.append(
                 {

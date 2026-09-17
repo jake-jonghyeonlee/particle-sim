@@ -201,14 +201,15 @@ def test_common_and_actual_differ(tmp_path: Path) -> None:
 
 
 def test_unsupported_mode_and_method(tmp_path: Path) -> None:
-    table = load_fab_table(_write_fab(tmp_path, _fab_rows()), bin_method="empirical_samples")
+    path = _write_fab(tmp_path, _fab_rows())
+    # the unsupported bin method is rejected as early as loading
+    with pytest.raises(InputContractError, match="empirical_samples"):
+        load_fab_table(path, bin_method="empirical_samples")
+    table = load_fab_table(path, bin_method="piecewise_constant")
     with pytest.raises(InputContractError, match="weighting_mode"):
         apply_fab_weighting(
             _ca_frame(), table, weighting_mode="guess", fab_id="FAB_A", product_family="F1",
             run_id="R", product_id="P",
         )
     with pytest.raises(InputContractError, match="empirical_samples"):
-        apply_fab_weighting(
-            _ca_frame(), table, weighting_mode="actual", fab_id="FAB_A", product_family="F1",
-            run_id="R", product_id="P",
-        )
+        match_sizes(_ca_frame(), table.frame, bin_method="empirical_samples")

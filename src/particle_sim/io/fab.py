@@ -42,6 +42,12 @@ class FabTable:
 
 def load_fab_table(path: Path, *, bin_method: str) -> FabTable:
     """Fab 이물 표를 읽고 fail-closed 검증을 수행한다."""
+    if bin_method == "empirical_samples":
+        raise InputContractError(
+            "empirical_samples는 아직 지원하지 않습니다(원본 표본 연결 규칙 미확정)",
+            file=str(path),
+            field="bin_method",
+        )
     if bin_method not in BIN_METHODS:
         raise InputContractError(
             f"bin_method '{bin_method}'은(는) 지원되지 않습니다",

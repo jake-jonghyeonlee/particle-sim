@@ -225,3 +225,65 @@ def test_scenario_config_validation(tmp_path: Path) -> None:
     )
     with pytest.raises(InputContractError):
         load_scenario_config(unknown)
+
+
+def test_center_offset_moves_x_and_y_independently() -> None:
+    grid = GridSpec(shape_yx=(20, 20), pixel_size_y_um=1.0, pixel_size_x_um=0.5)
+    mask = np.zeros((20, 20), dtype=bool)
+    mask[9:11, 8:12] = True
+
+    class _Masks:
+        pass
+
+    from particle_sim.geometry.transforms import transform_mask as _transform
+
+    # a +x centre offset must move the mask in -x only (and never in y)
+    scenario = _empty_scenario(center_offset_xy_um=(1.0, 0.0))
+    dx = -scenario.center_offset_xy_um[0]
+    expected = _transform(mask, grid, overlay_xy_um=(dx, 0.0))
+    assert np.array_equal(expected[:, 6:10], mask[:, 8:12])
+    scenario_y = _empty_scenario(center_offset_xy_um=(0.0, 2.0))
+    moved_y = _transform(mask, grid, overlay_xy_um=(0.0, -scenario_y.center_offset_xy_um[1]))
+    assert np.array_equal(moved_y[7:9, :], mask[9:11, :])
+
+
+def test_center_offset_applied_through_scenario(tmp_path: Path) -> None:
+    manifest_path = write_case(build_case("parallel_lines"), tmp_path)
+    manifest = load_manifest(manifest_path)
+    masks = load_product_masks(manifest, manifest_path)
+    offset = _empty_scenario(center_offset_xy_um=(1.0, 0.0))
+    overlay_equivalent = _empty_scenario(
+        overlay_xy_um={name: (-1.0, 0.0) for name in masks.layers}
+    )
+    by_offset = apply_scenario_to_masks(manifest, masks, offset)
+    by_overlay = apply_scenario_to_masks(manifest, masks, overlay_equivalent)
+    for electrode_id in masks.electrodes:
+        assert np.array_equal(by_offset.electrodes[electrode_id],
+                              by_overlay.electrodes[electrode_id])
+
+
+def test_signed_distance_identity_on_anisotropic_grid() -> None:
+    grid = GridSpec(shape_yx=(20, 20), pixel_size_y_um=1.0, pixel_size_x_um=0.25)
+    mask = np.zeros((20, 20), dtype=bool)
+    mask[6:14, 8:12] = True
+    from particle_sim.geometry.transforms import signed_distance_um
+
+    assert np.array_equal(signed_distance_um(mask, grid) <= 0, mask)
+    assert np.array_equal(transform_mask(mask, grid, cd_bias_um=0.0), mask)
+
+
+def test_union_convergence_rows_are_written(tmp_path: Path) -> None:
+    manifest_path = write_case(build_case("pilot"), tmp_path / "case")
+    scenario_path = _scenario_file(tmp_path, NOMINAL_SCENARIO, "nominal.yaml")
+    result = run_probability(
+        manifest_path, scenario_path, tmp_path / "run", sobol_exponent_m=7, seed=9,
+        convergence_tolerance=1.0,
+    )
+    with result.convergence.open(encoding="utf-8") as handle:
+        rows = list(csv.DictReader(handle))
+    union_rows = [r for r in rows if r["pair_id"].startswith("union:")]
+    assert {r["failure_mode"] for r in union_rows} >= {"lateral_short", "vertical_short", "any"}
+    manifest = json.loads(result.run_manifest.read_text(encoding="utf-8"))
+    assert manifest["convergence_tolerance"] == 1.0
+    assert manifest["convergence_not_met"] == []
+    assert manifest["convergence_undecidable"] == 0

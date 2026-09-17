@@ -66,7 +66,7 @@ def apply_scenario_to_masks(
     manifest: ProductManifest, masks: MaskSet, scenario: Scenario
 ) -> MaskSet:
     """Overlay, CD bias and the particle centre offset applied to every mask."""
-    offset_y, offset_x = scenario.center_offset_xy_um
+    offset_x, offset_y = scenario.center_offset_xy_um
     layer_of = {e.electrode_id: e.layer_name for e in manifest.electrodes}
     grid = masks.grid
 

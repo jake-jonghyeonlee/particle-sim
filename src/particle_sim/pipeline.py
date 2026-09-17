@@ -37,7 +37,11 @@ from particle_sim.io.stack import build_stack_z
 from particle_sim.schema import scenario_warnings, todo_physics_warnings
 from particle_sim.uncertainty.sampler import build_scenarios
 from particle_sim.units import NOT_APPLICABLE, OPEN_MODE, evaluate_units, unit_ids, unit_modes
-from particle_sim.validation.convergence import CONVERGENCE_COLUMNS, convergence_series
+from particle_sim.validation.convergence import (
+    CONVERGENCE_COLUMNS,
+    convergence_series,
+    is_converged,
+)
 from particle_sim.validation.regression import explain_legacy_vs_edt
 
 LEGACY_COMPARISON_COLUMNS = (
@@ -315,6 +319,7 @@ def run_probability(
     *,
     sobol_exponent_m: int,
     seed: int,
+    convergence_tolerance: float | None = None,
     now: datetime | None = None,
 ) -> ProbabilityRunResult:
     """Accumulate scenario hotspots into probability maps, CA percentiles and convergence."""
@@ -470,6 +475,18 @@ def run_probability(
             for union_index, key in enumerate(union_keys):
                 accumulator = union_accumulators[key]
                 union_probability = accumulator.probability()
+                for entry in convergence_series(_prefix_means(accumulator.scenario_ca_um2)):
+                    convergence_rows.append(
+                        {
+                            "source_step": step.step_id,
+                            "particle_size_um": float(diameter),
+                            "pair_id": f"union:{key}",
+                            "failure_mode": key,
+                            "scenario_count": entry.scenario_count,
+                            "ca_um2": entry.ca_um2,
+                            "delta_previous": entry.delta_previous,
+                        }
+                    )
                 store.write_union(
                     step_index, size_index, union_index, probability=union_probability
                 )
@@ -540,5 +557,38 @@ def run_probability(
     run_manifest["random_seed"] = seed
     run_manifest["sobol_exponent_m"] = sobol_exponent_m
     run_manifest["scenario_count"] = len(scenarios)
+    run_manifest["convergence_tolerance"] = convergence_tolerance
+    if convergence_tolerance is not None:
+        by_series: dict[tuple, dict[int, float]] = {}
+        for row in convergence_rows:
+            key = (row["source_step"], row["particle_size_um"], row["pair_id"])
+            by_series.setdefault(key, {})[int(row["scenario_count"])] = float(row["ca_um2"])
+        not_converged = []
+        undecidable = 0
+        for key, samples in by_series.items():
+            steps_for_key = convergence_series(samples)
+            comparable = [s for s in steps_for_key if np.isfinite(s.delta_previous)]
+            if not comparable:
+                # a single scenario count cannot be compared with anything
+                undecidable += 1
+                continue
+            if not is_converged(steps_for_key, convergence_tolerance):
+                not_converged.append(
+                    {"source_step": key[0], "particle_size_um": key[1], "pair_id": key[2]}
+                )
+        run_manifest["convergence_not_met"] = not_converged
+        run_manifest["convergence_undecidable"] = undecidable
+        if undecidable:
+            run_manifest["warnings"] = [
+                *run_manifest["warnings"],
+                f"CONVERGENCE: 비교할 시나리오 수가 하나뿐이라 판정할 수 없는 계열 "
+                f"{undecidable}개가 있습니다(sobol-m을 7 이상으로 올리십시오)",
+            ]
+        if not_converged:
+            run_manifest["warnings"] = [
+                *run_manifest["warnings"],
+                f"CONVERGENCE: 허용 오차 {convergence_tolerance}를 만족하지 못한 계열 "
+                f"{len(not_converged)}개가 있습니다",
+            ]
     write_json(run_manifest, result.run_manifest)
     return result
