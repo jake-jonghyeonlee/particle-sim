@@ -44,3 +44,6 @@ target-version = "py311"
 select = ["E", "F", "I", "B", "UP"]
 # Korean user-facing messages make E501 noisy; formatting still targets 100 columns.
 ignore = ["E501"]
+
+[tool.ruff.lint.isort]
+known-first-party = ["particle_sim"]
