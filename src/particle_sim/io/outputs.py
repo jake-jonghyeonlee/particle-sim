@@ -123,6 +123,17 @@ class HotspotStore:
         self._group["union_pair_count"][index] = np.asarray(pair_count, dtype=np.uint16)
 
 
+REQUIRED_RUN_MANIFEST_KEYS: tuple[str, ...] = (
+    "run_id", "product_id", "design_version", "config_hash", "assumption_set",
+    "simulator_version", "legacy_kernel", "post_step_policy", "warnings",
+)
+
+
+def check_run_manifest(manifest: dict) -> list[str]:
+    """Return the required keys missing from a run manifest."""
+    return [key for key in REQUIRED_RUN_MANIFEST_KEYS if key not in manifest]
+
+
 def open_hotspot_store(path: Path) -> zarr.Group:
     """Open an existing hotspot store read-only."""
     return zarr.open_group(Path(path), mode="r")

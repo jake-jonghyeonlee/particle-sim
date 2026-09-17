@@ -12,7 +12,7 @@ import pandas as pd
 from particle_sim.config import load_manifest
 from particle_sim.errors import InputContractError
 from particle_sim.io.masks import load_product_masks
-from particle_sim.io.outputs import open_hotspot_store
+from particle_sim.io.outputs import check_run_manifest, open_hotspot_store
 from particle_sim.io.stack import build_stack_z
 from particle_sim.visualization.hotspots import (
     plot_ca_curves,
@@ -73,6 +73,23 @@ def make_report(run_dir: Path, manifest_path: Path) -> Path:
             file=str(run_dir),
             field="run",
         ) from exc
+    missing = check_run_manifest(run_manifest)
+    if missing:
+        raise InputContractError(
+            f"run manifest에 필수 필드가 없습니다: {missing}",
+            product_id=product_id,
+            file=str(run_dir / "run_manifest.json"),
+            field=missing[0],
+        )
+    missing_attrs = [a for a in ("source_steps", "particle_sizes_um", "pair_ids")
+                     if a not in store.attrs]
+    if missing_attrs:
+        raise InputContractError(
+            f"hotspots.zarr에 필수 항목이 없습니다: {missing_attrs}",
+            product_id=product_id,
+            file=str(run_dir / "hotspots.zarr"),
+            field=missing_attrs[0],
+        )
     masks = load_product_masks(manifest, manifest_path)
     stack_z = build_stack_z(manifest)
     report_dir = run_dir / "report"

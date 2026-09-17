@@ -13,7 +13,7 @@ import pandas as pd
 from particle_sim.config import load_manifest
 from particle_sim.errors import InputContractError
 from particle_sim.io.masks import load_product_masks
-from particle_sim.io.outputs import open_hotspot_store
+from particle_sim.io.outputs import check_run_manifest, open_hotspot_store
 from particle_sim.io.stack import build_stack_z
 
 BUNDLE_COLUMNS = (
@@ -82,6 +82,32 @@ def export_simcompare(run_dir: Path, manifest_path: Path, out_dir: Path) -> Path
             file=str(run_dir),
             field="run",
         ) from exc
+    missing = check_run_manifest(run_manifest)
+    if missing:
+        raise InputContractError(
+            f"run manifest에 필수 필드가 없습니다: {missing}",
+            product_id=product_id,
+            file=str(run_manifest_path),
+            field=missing[0],
+        )
+    missing_columns = [c for c in ("source_step", "pair_id", "particle_size_um",
+                                   "ca_nominal_normalized") if c not in ca.columns]
+    if missing_columns:
+        raise InputContractError(
+            f"ca.parquet에 필수 열이 없습니다: {missing_columns}",
+            product_id=product_id,
+            file=str(run_dir / "ca.parquet"),
+            field=missing_columns[0],
+        )
+    missing_attrs = [a for a in ("source_steps", "particle_sizes_um", "pair_ids")
+                     if a not in store.attrs]
+    if missing_attrs or "nominal_failure" not in store:
+        raise InputContractError(
+            f"hotspots.zarr에 필수 항목이 없습니다: {missing_attrs or ['nominal_failure']}",
+            product_id=product_id,
+            file=str(run_dir / "hotspots.zarr"),
+            field=(missing_attrs or ["nominal_failure"])[0],
+        )
     if run_manifest.get("product_id") != product_id:
         raise InputContractError(
             f"실행 결과의 product_id({run_manifest.get('product_id')})가 manifest와 다릅니다",

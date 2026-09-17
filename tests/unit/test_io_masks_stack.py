@@ -450,3 +450,27 @@ class TestStepLayers:
         step = manifest.particle_source_steps[0]  # lands after L1 (order=1)
         after = layers_after(step, sz)
         assert [lz.layer_name for lz in after] == ["L2"]
+
+
+def test_missing_mask_file_is_contract_error(tmp_path: Path) -> None:
+    from particle_sim.validation.synthetic_cases import build_case, write_case
+
+    manifest_path = write_case(build_case("parallel_lines"), tmp_path)
+    (tmp_path / "masks" / "electrode_A.png").unlink()
+    manifest = load_manifest(manifest_path)
+    with pytest.raises(InputContractError) as exc:
+        load_product_masks(manifest, manifest_path)
+    message = str(exc.value)
+    assert "file=" in message
+    assert "electrodes[0].path" in message
+
+
+def test_corrupt_mask_file_is_contract_error(tmp_path: Path) -> None:
+    from particle_sim.validation.synthetic_cases import build_case, write_case
+
+    manifest_path = write_case(build_case("parallel_lines"), tmp_path)
+    (tmp_path / "masks" / "layer_M2.png").write_bytes(b"not a png")
+    manifest = load_manifest(manifest_path)
+    with pytest.raises(InputContractError) as exc:
+        load_product_masks(manifest, manifest_path)
+    assert "layer_masks[" in str(exc.value)

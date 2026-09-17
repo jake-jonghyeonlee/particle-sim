@@ -56,11 +56,31 @@ def test_ca_table_matches_hotspots(pilot_run: tuple[Path, Path]) -> None:
     assert ca["ca_nominal_um2"].max() > 0
 
 
-def test_union_never_exceeds_pair_sum(pilot_run: tuple[Path, Path]) -> None:
+def test_union_table_matches_stored_union_maps(pilot_run: tuple[Path, Path]) -> None:
     _, run_dir = pilot_run
     union = pd.read_parquet(run_dir / "ca_union.parquet")
+    ca = pd.read_parquet(run_dir / "ca.parquet")
     assert len(union) == 45
     assert (union["ca_union_nominal_um2"] <= union["ca_pair_sum_nominal_um2"] + 1e-9).all()
+    store = open_hotspot_store(run_dir / "hotspots.zarr")
+    steps = list(store.attrs["source_steps"])
+    sizes = [float(s) for s in store.attrs["particle_sizes_um"]]
+    union_keys = list(store.attrs["union_keys"])
+    for row in union.itertuples(index=False):
+        index = (steps.index(row.source_step), sizes.index(row.particle_size_um),
+                 union_keys.index(row.failure_mode))
+        stored = np.asarray(store["union_failure"][index])
+        assert row.ca_union_nominal_um2 == pytest.approx(float(stored.sum()) * 0.25)
+        members = ca[(ca["source_step"] == row.source_step)
+                     & (ca["particle_size_um"] == row.particle_size_um)
+                     & (ca["pair_id"].isin(row.pair_ids.split(";")))]
+        assert row.ca_pair_sum_nominal_um2 == pytest.approx(members["ca_nominal_um2"].sum())
+        pair_maps = [
+            np.asarray(store["nominal_failure"][index[0], index[1], i]).astype(bool)
+            for i, pair_id in enumerate(list(store.attrs["pair_ids"]))
+            if pair_id in row.pair_ids.split(";")
+        ]
+        assert np.array_equal(stored.astype(bool), np.logical_or.reduce(pair_maps))
 
 
 def test_legacy_comparison_fully_explained(pilot_run: tuple[Path, Path]) -> None:

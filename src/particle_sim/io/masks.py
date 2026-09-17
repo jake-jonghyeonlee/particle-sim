@@ -58,7 +58,16 @@ def load_binary_mask(path: Path, *, product_id: str, field: str) -> np.ndarray:
     """
     suffix = path.suffix.lower()
     if suffix == ".png":
-        img = Image.open(path)
+        try:
+            img = Image.open(path)
+            img.load()
+        except (OSError, ValueError) as exc:
+            raise InputContractError(
+                f"PNG 마스크를 읽을 수 없습니다: {exc}",
+                product_id=product_id,
+                file=str(path),
+                field=field,
+            ) from exc
         if img.mode not in ("L", "1"):
             raise InputContractError(
                 f"2-D 단일 채널 PNG가 아닙니다 (mode={img.mode})",
@@ -68,7 +77,15 @@ def load_binary_mask(path: Path, *, product_id: str, field: str) -> np.ndarray:
             )
         arr = np.array(img)
     elif suffix in (".tif", ".tiff"):
-        arr = tifffile.imread(str(path))
+        try:
+            arr = tifffile.imread(str(path))
+        except (OSError, ValueError, KeyError, IndexError) as exc:
+            raise InputContractError(
+                f"TIFF 마스크를 읽을 수 없습니다: {exc}",
+                product_id=product_id,
+                file=str(path),
+                field=field,
+            ) from exc
         if arr.ndim != 2:
             raise InputContractError(
                 f"2-D 단일 채널 TIFF가 아닙니다 (ndim={arr.ndim})",
@@ -122,6 +139,9 @@ def load_product_masks(manifest: ProductManifest, manifest_path: Path) -> MaskSe
             field="layer_masks",
         )
 
+    electrode_index = {e.electrode_id: i for i, e in enumerate(manifest.electrodes)}
+    layer_index = {lm.layer_name: i for i, lm in enumerate(manifest.layer_masks)}
+
     # 1. 모든 마스크 shape 일치
     ref_shape: tuple[int, int] | None = None
     ref_file: str | None = None
@@ -133,6 +153,15 @@ def load_product_masks(manifest: ProductManifest, manifest_path: Path) -> MaskSe
             manifest_path, rel_path, product_id=product_id, field=field
         )
         arr = load_binary_mask(resolved, product_id=product_id, field=field)
+        try:
+            input_hashes[rel_path] = file_sha256(resolved)
+        except OSError as exc:
+            raise InputContractError(
+                f"마스크 해시를 계산할 수 없습니다: {exc}",
+                product_id=product_id,
+                file=str(resolved),
+                field=field,
+            ) from exc
         shape = arr.shape
         if ref_shape is None:
             ref_shape = shape
@@ -145,7 +174,6 @@ def load_product_masks(manifest: ProductManifest, manifest_path: Path) -> MaskSe
                 field=field,
             )
         masks[rel_path] = arr
-        input_hashes[rel_path] = file_sha256(resolved)
 
     assert ref_shape is not None
     shape_y, shape_x = ref_shape
@@ -186,7 +214,7 @@ def load_product_masks(manifest: ProductManifest, manifest_path: Path) -> MaskSe
                 f"전극 '{eid}' 마스크가 비어있습니다",
                 product_id=product_id,
                 file=str(manifest_path),
-                field=f"electrodes[{eid}].path",
+                field=f"electrodes[{electrode_index[eid]}].path",
             )
 
     # 4. 동일 레이어 전극 겹침 검증
@@ -207,7 +235,7 @@ def load_product_masks(manifest: ProductManifest, manifest_path: Path) -> MaskSe
                     f"레이어 '{lname}'의 전극이 겹칩니다: {int(overlap.sum())}픽셀",
                     product_id=product_id,
                     file=str(manifest_path),
-                    field=f"electrodes[{eid}].path",
+                    field=f"electrodes[{electrode_index[eid]}].path",
                 )
             accumulated |= em
 
@@ -226,7 +254,7 @@ def load_product_masks(manifest: ProductManifest, manifest_path: Path) -> MaskSe
                 f"레이어 '{lname}' 합집합 불일치: missing={missing}, extra={extra}",
                 product_id=product_id,
                 file=str(manifest_path),
-                field=f"layer_masks[{lname}].path",
+                field=f"layer_masks[{layer_index[lname]}].path",
             )
 
     grid = GridSpec(

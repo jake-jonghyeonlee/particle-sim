@@ -120,3 +120,22 @@ def test_wrong_mode_or_relation_rejected(tmp_path_factory: pytest.TempPathFactor
 def test_union_requires_results() -> None:
     with pytest.raises(ValueError):
         union_by_mode([])
+
+
+def test_union_is_exact_pixelwise_or(tmp_path_factory: pytest.TempPathFactory) -> None:
+    manifest, masks, stack_z, cache = _load(tmp_path_factory, "pilot")
+    for step_id in ("S_M1", "S_M2", "S_PLN"):
+        for diameter in (2.0, 6.0, 10.0):
+            results = simulate_pairs(manifest, masks, stack_z, step_id, diameter, cache)
+            unions = union_by_mode(results)
+            for mode, union in unions.items():
+                members = [
+                    r for r in results if mode == ANY_MODE or r.failure_mode == mode
+                ]
+                expected = np.logical_or.reduce([m.failure for m in members])
+                assert np.array_equal(union.any_failure, expected)
+                assert np.array_equal(
+                    union.pair_count,
+                    sum(m.failure.astype(np.uint16) for m in members),
+                )
+                assert union.pair_ids == tuple(m.pair_id for m in members)
