@@ -14,11 +14,25 @@ Phase 2(open 연결성, 공정 산포 확률, Fab 가중)를 제공한다.
 
 ## 설치
 
+폐쇄망처럼 PyPI 미러만 있는 환경에서는 표준 `venv` + `pip`를 쓴다(권장 경로).
+
 ```bash
-uv sync                      # Python 3.11+, numpy/scipy/pydantic/zarr/pyarrow/matplotlib 등
-uv run pytest                # 단위·통합 테스트
-uv run ruff check src tests
+python3.12 -m venv .venv
+.venv/bin/python -m pip install --upgrade pip
+.venv/bin/python -m pip install -r requirements-dev.txt   # 런타임 + 개발 도구
+PYTHONPATH=src .venv/bin/python -m pytest -q
+PYTHONPATH=src .venv/bin/python -m particle_sim --help
 ```
+
+- `requirements.txt`: 런타임 의존성(상·하한 명시)
+- `requirements-dev.txt`: 위 + pytest/ruff/mypy
+- `requirements.lock.txt`: 개발 장비에서 실제로 검증한 정확한 버전. 미러에 같은 버전이 있으면
+  이 파일로 설치하면 재현된다
+- Python 3.11~3.13에서 동작하며 3.12.13으로 검증했다
+- 실행 중 네트워크를 쓰지 않는다. matplotlib 폰트 캐시만 홈 디렉터리에 한 번 생성된다
+
+인터넷이 되는 개발 장비에서는 uv도 쓸 수 있다(`uv sync`). 다만 uv가 만든 venv에는 pip이
+없으므로, 폐쇄망 반입 검증은 위의 `python -m venv` 경로로 해야 한다.
 
 ## 빠른 실행 (합성 데이터)
 

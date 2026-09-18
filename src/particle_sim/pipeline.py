@@ -34,6 +34,7 @@ from particle_sim.io.outputs import (
     write_table,
 )
 from particle_sim.io.stack import build_stack_z
+from particle_sim.progress import peak_memory_mb, track
 from particle_sim.schema import scenario_warnings, todo_physics_warnings
 from particle_sim.uncertainty.sampler import build_scenarios
 from particle_sim.units import NOT_APPLICABLE, OPEN_MODE, evaluate_units, unit_ids, unit_modes
@@ -166,7 +167,9 @@ def run_nominal(
     pair_index_by_id = {unit_id: i for i, unit_id in enumerate(unit_id_list)}
     empty_legacy = np.zeros(grid.shape_yx, dtype=bool)
     for step_index, step in enumerate(steps):
-        for size_index, diameter in enumerate(sizes):
+        for size_index, diameter in track(
+            list(enumerate(sizes)), total=len(sizes), description=f"nominal {step.step_id}"
+        ):
             results = evaluate_units(manifest, masks, stack_z, step.step_id, diameter, cache)
             by_id = {r.pair_id: r for r in results}
             nominal_ca: dict[str, float] = {}
@@ -281,6 +284,7 @@ def run_nominal(
         created_at=created_at,
         git_commit=None,
     )
+    run_manifest["peak_memory_mb"] = round(peak_memory_mb(), 1)
     write_json(run_manifest, result.run_manifest)
     return result
 
@@ -379,7 +383,9 @@ def run_probability(
     assumption_set = scenario_config.assumption_set
 
     for step_index, step in enumerate(steps):
-        for size_index, diameter in enumerate(sizes):
+        for size_index, diameter in track(
+            list(enumerate(sizes)), total=len(sizes), description=f"probability {step.step_id}"
+        ):
             unit_accumulators = {
                 unit_id: ProbabilityAccumulator(grid.shape_yx, grid) for unit_id in unit_id_list
             }
@@ -557,6 +563,7 @@ def run_probability(
     run_manifest["random_seed"] = seed
     run_manifest["sobol_exponent_m"] = sobol_exponent_m
     run_manifest["scenario_count"] = len(scenarios)
+    run_manifest["peak_memory_mb"] = round(peak_memory_mb(), 1)
     run_manifest["convergence_tolerance"] = convergence_tolerance
     if convergence_tolerance is not None:
         by_series: dict[tuple, dict[int, float]] = {}

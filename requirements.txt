@@ -1,0 +1,17 @@
+# 런타임 의존성 (폐쇄망 PyPI 미러에서 pip로 설치한다)
+#   python -m venv .venv && .venv/bin/python -m pip install -r requirements.txt
+# 상한은 주요 버전 변경으로 인한 계약 파손을 막기 위한 것이며, 하한은 실제로 검증한 최소 버전이다.
+matplotlib>=3.8,<4
+numcodecs>=0.13,<1
+numpy>=1.26,<3
+pandas>=2.2,<4
+pillow>=10,<13
+psutil>=6,<8
+pyarrow>=16,<26
+pydantic>=2.7,<3
+pyyaml>=6,<7
+scikit-image>=0.24,<1
+scipy>=1.13,<2
+tifffile>=2024.1.30
+tqdm>=4.66,<5
+zarr>=3,<4

@@ -1,0 +1,15 @@
+# 2026-09-18 개발 장비(macOS, Python 3.12.13)에서 실제로 검증한 정확한 버전.
+# 폐쇄망에서 같은 조합을 재현하려면 이 파일을 쓰고, 미러에 없는 버전이 있으면
+# requirements.txt의 범위 안에서 가장 가까운 버전을 사용한다.
+matplotlib==3.11.2
+numcodecs==0.16.5
+numpy==2.5.3
+pandas==3.0.5
+pillow==12.3.0
+pyarrow==25.0.1
+pydantic==2.13.5
+PyYAML==6.0.3
+scikit-image==0.26.0
+scipy==1.18.1
+tifffile==2026.9.15
+zarr==3.4.0
