@@ -364,3 +364,39 @@ def test_anisotropic_cd_bias_grows_each_axis_physically() -> None:
     cols = np.where(grown.any(axis=0))[0]
     assert rows.min() == 3 and rows.max() == 16  # 0.5 um = 1 px at 1.0 um/px
     assert cols.min() == 2 and cols.max() == 17  # 0.5 um = 2 px at 0.25 um/px
+
+
+def test_open_terminals_move_with_their_layer(tmp_path: Path) -> None:
+    from particle_sim.geometry.transforms import scenario_manifest, scenario_terminal
+
+    manifest_path = write_case(build_case("open_straight"), tmp_path)
+    manifest = load_manifest(manifest_path)
+    masks = load_product_masks(manifest, manifest_path)
+    # the wire sits on M2; a +2 um overlay in x must carry the terminals along
+    scenario = _empty_scenario(overlay_xy_um={"M2": (2.0, 0.0)})
+    moved = scenario_manifest(manifest, scenario, masks)
+    before = manifest.open_paths[0]
+    after = moved.open_paths[0]
+    assert after.terminal_a_yx_px[1] == before.terminal_a_yx_px[1] + 4  # 2 um at 0.5 um/px
+    # terminal b would land past the end of the wire, so it is snapped back onto the last pixel
+    assert after.terminal_b_yx_px[1] == 179
+
+    wire = masks.electrodes["W"]
+    assert scenario_terminal((100, 22), (0.0, 0.0), masks.grid, wire) == (100, 22)
+    # a point just off the wire is snapped back onto it within the documented radius
+    assert scenario_terminal((95, 22), (0.0, 0.0), masks.grid, wire) == (97, 22)
+    # far away from the electrode there is nothing to snap to
+    assert scenario_terminal((10, 10), (0.0, 0.0), masks.grid, wire) is None
+
+
+def test_probability_run_with_open_paths(tmp_path: Path) -> None:
+    manifest_path = write_case(build_case("open_straight"), tmp_path / "case")
+    scenario_path = _scenario_file(tmp_path, NOMINAL_SCENARIO, "nominal.yaml")
+    result = run_probability(
+        manifest_path, scenario_path, tmp_path / "run", sobol_exponent_m=4, seed=5
+    )
+    ca = pd.read_parquet(result.ca_table)
+    open_rows = ca[ca["failure_mode"] == "lateral_open"]
+    assert len(open_rows) == 15  # 3 steps x 5 sizes
+    assert (open_rows["ca_mean_um2"] >= 0).all()
+    assert open_rows["ca_mean_um2"].max() > 0

@@ -16,6 +16,7 @@ from particle_sim.failure.open_failure import (
     open_candidates,
     resolve_terminals,
     simulate_open,
+    simulate_open_sizes,
 )
 from particle_sim.io.masks import GridSpec, load_product_masks
 from particle_sim.schema import OpenPath
@@ -182,3 +183,76 @@ def test_candidate_reduction_with_contact_margin(margin: float) -> None:
             brute[y, x] = causes_open(wire, blocked_mask(distance, 1.0, margin), *terminals)
     candidates = open_candidates(wire, grid, 1.0, margin, terminals)
     assert not (brute & ~candidates).any()
+
+
+def _reference_failures(wire: np.ndarray, grid: GridSpec, diameter: float, margin: float,
+                        terminals) -> np.ndarray:
+    """Full-image labelling for every pixel: the definition the fast path must reproduce."""
+    yy, xx = np.mgrid[0 : wire.shape[0], 0 : wire.shape[1]]
+    result = np.zeros(wire.shape, dtype=bool)
+    for y in range(wire.shape[0]):
+        for x in range(wire.shape[1]):
+            distance = np.hypot((yy - y) * grid.pixel_size_y_um,
+                                (xx - x) * grid.pixel_size_x_um)
+            result[y, x] = causes_open(
+                wire, blocked_mask(distance, diameter / 2.0, margin), *terminals
+            )
+    return result
+
+
+@pytest.mark.parametrize(
+    ("case", "sizes"),
+    [("open_straight", (2.0, 6.0, 10.0)), ("open_detour", (6.0, 10.0)),
+     ("open_branch", (6.0, 10.0))],
+)
+def test_fast_path_matches_full_labelling(tmp_path: Path, case: str, sizes) -> None:
+    manifest, masks = _case(tmp_path, case)
+    open_path = manifest.open_paths[0]
+    wire = masks.electrodes[open_path.electrode]
+    terminals = (tuple(open_path.terminal_a_yx_px), tuple(open_path.terminal_b_yx_px))
+    results = simulate_open_sizes(manifest, masks, open_path, list(sizes))
+    for diameter in sizes:
+        expected = _reference_failures(wire, masks.grid, diameter, 0.0, terminals)
+        assert np.array_equal(results[diameter].failure, expected)
+
+
+def test_fast_path_matches_full_labelling_on_a_corner(tmp_path: Path) -> None:
+    from particle_sim.failure.open_failure import particle_footprint
+    from particle_sim.failure.open_fast import LocalConnectivity
+
+    grid = _grid(shape=(12, 12), py=1.0, px=1.0)
+    wire = np.zeros((12, 12), dtype=bool)
+    wire[2:8, 3] = True
+    wire[7, 3:9] = True
+    terminals = ((2, 3), (7, 8))
+    for diameter in (1.0, 2.0, 4.0, 8.0):
+        expected = _reference_failures(wire, grid, diameter, 0.0, terminals)
+        stamp = particle_footprint(grid, diameter / 2.0, 0.0)
+        reach = int(np.ceil((diameter / 2.0) / 1.0))
+        connectivity = LocalConnectivity(wire, *terminals, reach, reach)
+        actual = np.zeros(wire.shape, dtype=bool)
+        for y in range(12):
+            for x in range(12):
+                actual[y, x] = connectivity.causes_open((y, x), stamp)
+        assert np.array_equal(actual, expected)
+
+
+def test_open_is_monotone_in_size(tmp_path: Path) -> None:
+    manifest, masks = _case(tmp_path, "open_straight")
+    sizes = [2.0, 4.0, 6.0, 8.0, 10.0]
+    results = simulate_open_sizes(manifest, masks, manifest.open_paths[0], sizes)
+    previous = None
+    for diameter in sizes:
+        current = results[diameter].failure
+        if previous is not None:
+            assert np.all(previous <= current)
+        previous = current
+
+
+def test_already_open_electrode_is_rejected(tmp_path: Path) -> None:
+    manifest, masks = _case(tmp_path, "open_straight")
+    broken = masks.electrodes["W"].copy()
+    broken[:, 90:110] = False  # cut the wire before any particle
+    masks.electrodes["W"] = broken
+    with pytest.raises(InputContractError, match="연결돼 있지 않"):
+        simulate_open(manifest, masks, manifest.open_paths[0], 4.0)

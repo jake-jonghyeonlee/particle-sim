@@ -37,7 +37,14 @@ from particle_sim.io.stack import build_stack_z
 from particle_sim.progress import peak_memory_mb, track
 from particle_sim.schema import scenario_warnings, todo_physics_warnings
 from particle_sim.uncertainty.sampler import build_scenarios
-from particle_sim.units import NOT_APPLICABLE, OPEN_MODE, evaluate_units, unit_ids, unit_modes
+from particle_sim.units import (
+    NOT_APPLICABLE,
+    OPEN_MODE,
+    OpenCache,
+    evaluate_units,
+    unit_ids,
+    unit_modes,
+)
 from particle_sim.validation.convergence import (
     CONVERGENCE_COLUMNS,
     convergence_series,
@@ -128,6 +135,7 @@ def run_nominal(
     )
 
     cache = DistanceCache(masks)
+    open_cache = OpenCache(manifest, masks, [float(s) for s in sizes])
     ca_rows: list[dict] = []
     union_rows: list[dict] = []
     legacy_cache: dict[tuple[int, int], np.ndarray] = {}
@@ -170,7 +178,9 @@ def run_nominal(
         for size_index, diameter in track(
             list(enumerate(sizes)), total=len(sizes), description=f"nominal {step.step_id}"
         ):
-            results = evaluate_units(manifest, masks, stack_z, step.step_id, diameter, cache)
+            results = evaluate_units(
+                manifest, masks, stack_z, step.step_id, diameter, cache, open_cache
+            )
             by_id = {r.pair_id: r for r in results}
             nominal_ca: dict[str, float] = {}
             for pair_index, unit_id in enumerate(unit_id_list):
@@ -374,9 +384,14 @@ def run_probability(
     )
 
     scenario_masks = [apply_scenario_to_masks(manifest, masks, s) for s in scenarios]
+    scenario_open_caches: list[OpenCache] = []
     scenario_stacks = [apply_scenario_to_stack(stack_z, s) for s in scenarios]
-    scenario_manifests = [scenario_manifest(manifest, s) for s in scenarios]
+    scenario_manifests = [
+        scenario_manifest(manifest, s, m)
+        for s, m in zip(scenarios, scenario_masks, strict=True)
+    ]
     nominal_cache = DistanceCache(masks)
+    nominal_open_cache = OpenCache(manifest, masks, [float(s) for s in sizes])
     ca_rows: list[dict] = []
     union_rows: list[dict] = []
     convergence_rows: list[dict] = []
@@ -392,8 +407,15 @@ def run_probability(
             union_accumulators = {
                 key: ProbabilityAccumulator(grid.shape_yx, grid) for key in union_keys
             }
-            for scenario, s_masks, s_stack, s_manifest in zip(
-                scenarios, scenario_masks, scenario_stacks, scenario_manifests, strict=True
+            if not scenario_open_caches:
+                scenario_open_caches = [
+                    OpenCache(s_manifest, s_masks, [])
+                    for s_manifest, s_masks in zip(
+                        scenario_manifests, scenario_masks, strict=True
+                    )
+                ]
+            for index, (scenario, s_masks, s_stack, s_manifest) in enumerate(
+                zip(scenarios, scenario_masks, scenario_stacks, scenario_manifests, strict=True)
             ):
                 diameter_um = max(diameter + scenario.particle_diameter_delta_um, 1e-9)
                 results = evaluate_units(
@@ -403,6 +425,7 @@ def run_probability(
                     step.step_id,
                     diameter_um,
                     DistanceCache(s_masks),
+                    scenario_open_caches[index],
                 )
                 for unit in results:
                     unit_accumulators[unit.pair_id].add(unit.failure, unit.pair_margin_um)
@@ -412,7 +435,8 @@ def run_probability(
             nominal_results = {
                 r.pair_id: r
                 for r in evaluate_units(
-                    manifest, masks, stack_z, step.step_id, diameter, nominal_cache
+                    manifest, masks, stack_z, step.step_id, diameter, nominal_cache,
+                    nominal_open_cache,
                 )
             }
             for unit_index, unit_id in enumerate(unit_id_list):

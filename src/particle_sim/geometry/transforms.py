@@ -148,13 +148,91 @@ def apply_scenario_to_stack(
     return result
 
 
-def scenario_manifest(manifest: ProductManifest, scenario: Scenario) -> ProductManifest:
-    """Manifest copy whose scalar physics values follow the scenario."""
+def scenario_terminal(
+    terminal: tuple[int, int],
+    shift_xy_um: tuple[float, float],
+    grid: GridSpec,
+    electrode_mask: np.ndarray,
+    *,
+    snap_radius_px: int = 2,
+) -> tuple[int, int] | None:
+    """Move a terminal with its layer, then snap it back onto the electrode if needed.
+
+    Overlay moves the whole layer, so a contact point defined on the nominal layout moves with
+    it. CD bias can still leave the shifted pixel just outside the mask, so the terminal is
+    snapped to the nearest electrode pixel within `snap_radius_px`. Anything further away is
+    reported as unusable (None) instead of being silently relocated.
+    """
+    dx_um, dy_um = shift_xy_um
+    y = int(round(terminal[0] + dy_um / grid.pixel_size_y_um))
+    x = int(round(terminal[1] + dx_um / grid.pixel_size_x_um))
+    height, width = electrode_mask.shape
+    y = min(max(y, 0), height - 1)
+    x = min(max(x, 0), width - 1)
+    if electrode_mask[y, x]:
+        return (y, x)
+    top, bottom = max(y - snap_radius_px, 0), min(y + snap_radius_px + 1, height)
+    left, right = max(x - snap_radius_px, 0), min(x + snap_radius_px + 1, width)
+    window = electrode_mask[top:bottom, left:right]
+    if not window.any():
+        return None
+    ys, xs = np.nonzero(window)
+    distances = (ys + top - y) ** 2 + (xs + left - x) ** 2
+    best = int(np.argmin(distances))
+    return (int(ys[best] + top), int(xs[best] + left))
+
+
+def scenario_manifest(
+    manifest: ProductManifest,
+    scenario: Scenario,
+    masks: MaskSet | None = None,
+) -> ProductManifest:
+    """Manifest copy whose scalar physics values and open terminals follow the scenario."""
     update: dict[str, object] = {}
     if scenario.embedding_depth_um is not None:
         update["embedding_depth_um"] = scenario.embedding_depth_um
     if scenario.contact_margin_um is not None:
         update["contact_margin_um"] = scenario.contact_margin_um
+
+    if masks is not None and manifest.open_paths:
+        offset_x, offset_y = scenario.center_offset_xy_um
+        layer_of = {e.electrode_id: e.layer_name for e in manifest.electrodes}
+        moved = []
+        for open_path in manifest.open_paths:
+            electrode_mask = masks.electrodes.get(open_path.electrode)
+            if electrode_mask is None or open_path.terminal_a_yx_px is None:
+                moved.append(open_path)
+                continue
+            overlay = scenario.overlay_xy_um.get(layer_of[open_path.electrode], (0.0, 0.0))
+            shift = (overlay[0] - offset_x, overlay[1] - offset_y)
+            # a terminal pushed past the end of the wire is snapped back by at most the shift
+            snap = 2 + int(
+                np.ceil(
+                    max(
+                        abs(shift[0]) / masks.grid.pixel_size_x_um,
+                        abs(shift[1]) / masks.grid.pixel_size_y_um,
+                    )
+                )
+            )
+            terminals = [
+                scenario_terminal(tuple(t), shift, masks.grid, electrode_mask, snap_radius_px=snap)
+                for t in (open_path.terminal_a_yx_px, open_path.terminal_b_yx_px)
+            ]
+            if any(t is None for t in terminals):
+                # the shifted contact point left the wire: keep the nominal terminals and let
+                # the open module report the contract error for this scenario
+                moved.append(open_path)
+                continue
+            moved.append(
+                open_path.model_copy(
+                    update={
+                        "terminal_a_yx_px": terminals[0],
+                        "terminal_b_yx_px": terminals[1],
+                    }
+                )
+            )
+        update["open_paths"] = moved
+
     if not update:
         return manifest
     return manifest.model_copy(update=update)

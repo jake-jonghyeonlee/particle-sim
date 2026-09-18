@@ -5,7 +5,7 @@ from __future__ import annotations
 import numpy as np
 
 from particle_sim.failure.lateral_short import PairResult
-from particle_sim.failure.open_failure import simulate_open
+from particle_sim.failure.open_failure import simulate_open_sizes
 from particle_sim.failure.union import simulate_pairs
 from particle_sim.geometry.contact import DistanceCache
 from particle_sim.io.masks import MaskSet
@@ -44,6 +44,35 @@ def unit_modes(manifest: ProductManifest) -> list[str]:
     ]
 
 
+class OpenCache:
+    """Open results reused across source steps.
+
+    An open only depends on the electrode mask, the particle size and the contact margin, so
+    the same geometry must not be evaluated once per source step.
+    """
+
+    def __init__(self, manifest: ProductManifest, masks: MaskSet, sizes: list[float]) -> None:
+        self._manifest = manifest
+        self._masks = masks
+        self._sizes = sorted(sizes)
+        self._results: dict[tuple[str, float], object] = {}
+
+    def get(self, open_path, diameter_um: float):
+        key = (open_path.path_id, float(diameter_um))
+        if key not in self._results:
+            # every size is computed once, in increasing order, reusing the carry-forward
+            batch = simulate_open_sizes(
+                self._manifest,
+                self._masks,
+                open_path,
+                self._sizes if float(diameter_um) in self._sizes else [float(diameter_um)],
+                contact_margin_um=self._manifest.contact_margin_um,
+            )
+            for size, result in batch.items():
+                self._results[(open_path.path_id, float(size))] = result
+        return self._results[key]
+
+
 def evaluate_units(
     manifest: ProductManifest,
     masks: MaskSet,
@@ -51,12 +80,13 @@ def evaluate_units(
     step_id: str,
     diameter_um: float,
     cache: DistanceCache,
+    open_cache: OpenCache | None = None,
 ) -> list[PairResult]:
     """Short pairs and open paths for one source step and particle size."""
     results = simulate_pairs(manifest, masks, stack_z, step_id, diameter_um, cache)
+    if manifest.open_paths and open_cache is None:
+        open_cache = OpenCache(manifest, masks, [diameter_um])
     for open_path in manifest.open_paths:
-        open_result = simulate_open(
-            manifest, masks, open_path, diameter_um, contact_margin_um=manifest.contact_margin_um
-        )
+        open_result = open_cache.get(open_path, diameter_um)
         results.append(open_as_pair_result(open_result, masks.grid.shape_yx))
     return results

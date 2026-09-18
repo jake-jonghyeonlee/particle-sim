@@ -5,9 +5,10 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 import numpy as np
-from scipy.ndimage import binary_dilation, label
+from scipy.ndimage import distance_transform_edt, label
 
 from particle_sim.errors import InputContractError
+from particle_sim.failure.open_fast import LocalConnectivity
 from particle_sim.io.masks import GridSpec, MaskSet
 from particle_sim.schema import OpenPath, ProductManifest
 
@@ -99,14 +100,6 @@ def resolve_terminals(
     )
 
 
-def _reach_footprint(grid: GridSpec, reach_um: float) -> np.ndarray:
-    """Disc of `reach_um` in pixels, rounded outwards so no candidate is lost."""
-    reach_y = int(np.ceil(reach_um / grid.pixel_size_y_um))
-    reach_x = int(np.ceil(reach_um / grid.pixel_size_x_um))
-    yy, xx = np.mgrid[-reach_y : reach_y + 1, -reach_x : reach_x + 1]
-    return np.hypot(yy * grid.pixel_size_y_um, xx * grid.pixel_size_x_um) <= reach_um
-
-
 def particle_footprint(grid: GridSpec, radius_um: float, contact_margin_um: float
                       ) -> np.ndarray:
     """Disc stamp of a particle centred on the middle pixel."""
@@ -132,6 +125,10 @@ def open_candidates(
     provable superset: a disc that touches nothing removes nothing. A skeleton/half-width
     filter was tried first and was dropped because it loses centres on corners and junctions,
     where `skeletonize` deletes pixels that still carry the connection.
+
+    The reach test uses a distance transform rather than a dilation with a large structuring
+    element: both give the same Euclidean disc, but a 201x201 structure costs ~10 GB and 19 s
+    on a 1000x1000 mask while the distance transform takes tens of milliseconds.
     """
     reach_um = radius_um + contact_margin_um
     if reach_um <= 0:
@@ -139,7 +136,33 @@ def open_candidates(
     seeds = electrode_mask.copy()
     for terminal in terminals:
         seeds[terminal] = True
-    return binary_dilation(seeds, structure=_reach_footprint(grid, reach_um))
+    if not seeds.any():
+        return np.zeros(electrode_mask.shape, dtype=bool)
+    distance = distance_transform_edt(
+        ~seeds, sampling=(grid.pixel_size_y_um, grid.pixel_size_x_um)
+    )
+    return distance <= reach_um
+
+
+def terminal_component(
+    electrode_mask: np.ndarray,
+    terminal_a: tuple[int, int],
+    terminal_b: tuple[int, int],
+    *,
+    product_id: str,
+    path_id: str,
+) -> np.ndarray:
+    """The electrode component that carries both terminals (an already open path is an error)."""
+    labels, _ = label(electrode_mask)
+    label_a = int(labels[terminal_a])
+    label_b = int(labels[terminal_b])
+    if label_a == 0 or label_b == 0 or label_a != label_b:
+        raise InputContractError(
+            f"open_path '{path_id}'의 두 단자가 이물 없이도 연결돼 있지 않습니다",
+            product_id=product_id,
+            field=f"open_paths[{path_id}].electrode",
+        )
+    return labels == label_a
 
 
 def simulate_open(
@@ -151,6 +174,25 @@ def simulate_open(
     contact_margin_um: float | None = None,
 ) -> OpenResult:
     """Evaluate every candidate particle centre for one open path and particle size."""
+    return simulate_open_sizes(
+        manifest, masks, open_path, [diameter_um], contact_margin_um=contact_margin_um
+    )[diameter_um]
+
+
+def simulate_open_sizes(
+    manifest: ProductManifest,
+    masks: MaskSet,
+    open_path: OpenPath,
+    diameters_um: list[float],
+    *,
+    contact_margin_um: float | None = None,
+) -> dict[float, OpenResult]:
+    """Evaluate several particle sizes at once.
+
+    Removing more never reconnects anything, so a centre that opens the path at one diameter
+    also opens it at every larger diameter. Sizes are processed in increasing order and only
+    the centres that are not open yet are evaluated.
+    """
     if open_path.electrode not in masks.electrodes:
         raise InputContractError(
             f"open_path '{open_path.path_id}'의 전극 '{open_path.electrode}'을(를) "
@@ -161,47 +203,45 @@ def simulate_open(
     electrode_mask = masks.electrodes[open_path.electrode]
     grid = masks.grid
     margin = manifest.contact_margin_um if contact_margin_um is None else contact_margin_um
-    radius_um = diameter_um / 2.0
     terminal_a, terminal_b, classification = resolve_terminals(
         open_path, electrode_mask, manifest.product_id
     )
-
-    failure = np.zeros(electrode_mask.shape, dtype=bool)
-    candidates = open_candidates(
-        electrode_mask, grid, radius_um, margin, (terminal_a, terminal_b)
+    component = terminal_component(
+        electrode_mask,
+        terminal_a,
+        terminal_b,
+        product_id=manifest.product_id,
+        path_id=open_path.path_id,
     )
-    if not candidates.any():
-        return OpenResult(
+
+    results: dict[float, OpenResult] = {}
+    carried = np.zeros(electrode_mask.shape, dtype=bool)
+    for diameter_um in sorted(diameters_um):
+        radius_um = diameter_um / 2.0
+        reach_um = max(radius_um + margin, 0.0)
+        failure = carried.copy()
+        candidates = open_candidates(component, grid, radius_um, margin, (terminal_a, terminal_b))
+        todo = candidates & ~failure
+        if todo.any():
+            stamp = particle_footprint(grid, radius_um, margin)
+            connectivity = LocalConnectivity(
+                component,
+                terminal_a,
+                terminal_b,
+                int(np.ceil(reach_um / grid.pixel_size_y_um)),
+                int(np.ceil(reach_um / grid.pixel_size_x_um)),
+            )
+            ys, xs = np.nonzero(todo)
+            for y, x in zip(ys.tolist(), xs.tolist(), strict=True):
+                failure[y, x] = connectivity.causes_open((y, x), stamp)
+        results[diameter_um] = OpenResult(
             path_id=open_path.path_id,
             electrode=open_path.electrode,
             failure=failure,
             classification=classification,
             terminal_a_yx=terminal_a,
             terminal_b_yx=terminal_b,
-            candidates=0,
+            candidates=int(candidates.sum()),
         )
-
-    stamp = particle_footprint(grid, radius_um, margin)
-    half_y, half_x = stamp.shape[0] // 2, stamp.shape[1] // 2
-    height, width = electrode_mask.shape
-    blocked = np.zeros(electrode_mask.shape, dtype=bool)
-    ys, xs = np.nonzero(candidates)
-    for y, x in zip(ys.tolist(), xs.tolist(), strict=True):
-        top, bottom = max(0, y - half_y), min(height, y + half_y + 1)
-        left, right = max(0, x - half_x), min(width, x + half_x + 1)
-        window = stamp[
-            top - (y - half_y) : stamp.shape[0] - ((y + half_y + 1) - bottom),
-            left - (x - half_x) : stamp.shape[1] - ((x + half_x + 1) - right),
-        ]
-        blocked[top:bottom, left:right] = window
-        failure[y, x] = causes_open(electrode_mask, blocked, terminal_a, terminal_b)
-        blocked[top:bottom, left:right] = False
-    return OpenResult(
-        path_id=open_path.path_id,
-        electrode=open_path.electrode,
-        failure=failure,
-        classification=classification,
-        terminal_a_yx=terminal_a,
-        terminal_b_yx=terminal_b,
-        candidates=int(candidates.sum()),
-    )
+        carried = failure
+    return results
