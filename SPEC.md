@@ -1,4 +1,4 @@
-# SPEC: particle-sim (worker summary, phase 0-3)
+# SPEC: particle-sim (worker summary)
 
 Purpose: 2.5D particle defect GEOMETRY simulator for display layouts. From per-layer
 electrode masks + layer stack thickness it computes, per particle source step and particle
@@ -6,9 +6,14 @@ diameter, binary short hotspots (lateral / vertical / diagonal), electrode-pair 
 critical area (CA). Legacy Erode/Dilate (5x5 kernel) hotspots are reproduced as the
 regression baseline. Outputs are "geometric contact risk", never "failure probability".
 
-Scope of this phase: manifest + validation, legacy morphology, 2.5D nominal short, union,
-CA, Zarr/Parquet/manifest outputs, simcompare export, figures. OUT: open failure, Sobol
-variation, Fab weighting (interfaces only, no code).
+Scope, phase 0-3: manifest + validation, legacy morphology, 2.5D nominal short, union, CA,
+Zarr/Parquet/manifest outputs, simcompare export, figures.
+Scope, phase 2: open connectivity (terminal based, `open_proxy` fallback), Sobol process
+variation with probability hotspots and CA percentiles, convergence prefixes, Fab weighting
+(common / actual). Probability values are conditioned on the scenario model: when the input
+sigma is not a measured process value the result is not an actual Fab failure probability.
+Still OUT: tile + halo for very large ROIs, empirical Fab size samples, electrical
+calibration of vertical shorts, `skeleton_cut` open proxy.
 
 Inputs per product (one YAML manifest, see docs/arch/schema-config.md):
 - layer masks: original patterned mask of each layer (binary PNG/TIFF, same shape)
