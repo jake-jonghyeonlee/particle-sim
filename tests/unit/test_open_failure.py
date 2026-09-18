@@ -153,3 +153,32 @@ def test_unknown_electrode(tmp_path: Path) -> None:
     )
     with pytest.raises(InputContractError):
         simulate_open(manifest, masks, unknown, 4.0)
+
+
+def test_candidate_reduction_covers_a_corner_wire() -> None:
+    """The Codex counter-example: skeletonize used to drop corner pixels."""
+    grid = _grid(shape=(12, 12), py=1.0, px=1.0)
+    wire = np.zeros((12, 12), dtype=bool)
+    wire[2:8, 3] = True
+    wire[7, 3:9] = True
+    terminals = ((2, 3), (7, 8))
+    for diameter in (1.0, 2.0, 4.0, 8.0):
+        brute = _brute_force(wire, grid, diameter / 2.0, terminals)
+        candidates = open_candidates(wire, grid, diameter / 2.0, 0.0, terminals)
+        assert not (brute & ~candidates).any()
+
+
+@pytest.mark.parametrize("margin", [0.25, 1.0])
+def test_candidate_reduction_with_contact_margin(margin: float) -> None:
+    wire = _wire()
+    grid = _grid()
+    terminals = ((20, 6), (20, 53))
+    yy, xx = np.mgrid[0 : wire.shape[0], 0 : wire.shape[1]]
+    brute = np.zeros(wire.shape, dtype=bool)
+    for y in range(wire.shape[0]):
+        for x in range(wire.shape[1]):
+            distance = np.hypot((yy - y) * grid.pixel_size_y_um,
+                                (xx - x) * grid.pixel_size_x_um)
+            brute[y, x] = causes_open(wire, blocked_mask(distance, 1.0, margin), *terminals)
+    candidates = open_candidates(wire, grid, 1.0, margin, terminals)
+    assert not (brute & ~candidates).any()

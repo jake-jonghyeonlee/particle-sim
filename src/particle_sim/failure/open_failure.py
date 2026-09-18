@@ -5,8 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 import numpy as np
-from scipy.ndimage import binary_dilation, distance_transform_edt, label
-from skimage.morphology import skeletonize
+from scipy.ndimage import binary_dilation, label
 
 from particle_sim.errors import InputContractError
 from particle_sim.io.masks import GridSpec, MaskSet
@@ -126,33 +125,21 @@ def open_candidates(
     contact_margin_um: float,
     terminals: tuple[tuple[int, int], ...] = (),
 ) -> np.ndarray:
-    """Particle centres that can possibly cut the line.
+    """Particle centres that can possibly open the path.
 
-    Two disjoint mechanisms must be kept: the disc cuts a locally thin segment, or the disc
-    covers a terminal (which opens the path whatever the local width is).
+    Only a disc that actually covers at least one electrode pixel can change the connectivity,
+    so every centre within reach of the electrode (or of a terminal) is a candidate. This is a
+    provable superset: a disc that touches nothing removes nothing. A skeleton/half-width
+    filter was tried first and was dropped because it loses centres on corners and junctions,
+    where `skeletonize` deletes pixels that still carry the connection.
     """
     reach_um = radius_um + contact_margin_um
     if reach_um <= 0:
         return np.zeros(electrode_mask.shape, dtype=bool)
-    terminal_reach = np.zeros(electrode_mask.shape, dtype=bool)
-    if terminals:
-        seeds = np.zeros(electrode_mask.shape, dtype=bool)
-        for terminal in terminals:
-            seeds[terminal] = True
-        terminal_reach = binary_dilation(seeds, structure=_reach_footprint(grid, reach_um))
-    half_width_um = distance_transform_edt(
-        electrode_mask, sampling=(grid.pixel_size_y_um, grid.pixel_size_x_um)
-    )
-    # Only centres whose disc can reach the centre line of a locally thin enough segment.
-    # EDT measures the distance to the nearest background pixel centre, while the disc has to
-    # cover the mask pixels themselves, so one pixel diagonal is added before comparing.
-    pixel_diagonal_um = float(np.hypot(grid.pixel_size_y_um, grid.pixel_size_x_um))
-    skeleton = skeletonize(electrode_mask)
-    thin_enough = skeleton & (half_width_um <= reach_um + pixel_diagonal_um)
-    if not thin_enough.any():
-        return terminal_reach
-    thin_reach = binary_dilation(thin_enough, structure=_reach_footprint(grid, reach_um))
-    return thin_reach | terminal_reach
+    seeds = electrode_mask.copy()
+    for terminal in terminals:
+        seeds[terminal] = True
+    return binary_dilation(seeds, structure=_reach_footprint(grid, reach_um))
 
 
 def simulate_open(

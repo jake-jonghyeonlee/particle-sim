@@ -63,18 +63,25 @@ def match_sizes(
                 }
             )
             matched_sizes.add(size)
-            matched_bins.add(float(nearest["size_bin_left_um"]))
+            # both bracketing representatives contribute to the interpolated value
+            upper = int(np.searchsorted(xs, size, side="left"))
+            lower = max(upper - 1, 0)
+            for index in {min(upper, len(xs) - 1), lower}:
+                matched_bins.add(float(points.iloc[index]["size_bin_left_um"]))
     else:
+        ordered = density.sort_values("size_bin_left_um", kind="stable")
+        last_right = float(ordered["size_bin_right_um"].iloc[-1]) if len(ordered) else None
         for _, row in ca.iterrows():
             size = float(row["particle_size_um"])
-            for _, bin_row in density.iterrows():
+            for _, bin_row in ordered.iterrows():
                 if bin_method == "exact_point":
-                    hit = np.isclose(size, float(bin_row["size_representative_um"]))
-                else:  # piecewise_constant
-                    hit = (
-                        float(bin_row["size_bin_left_um"])
-                        <= size
-                        <= float(bin_row["size_bin_right_um"])
+                    # the contract asks for the measured single diameter, so compare exactly
+                    hit = size == float(bin_row["size_representative_um"])
+                else:  # piecewise_constant, half-open [left, right); the last bin is closed
+                    left = float(bin_row["size_bin_left_um"])
+                    right = float(bin_row["size_bin_right_um"])
+                    hit = left <= size < right or (
+                        last_right is not None and right == last_right and size == right
                     )
                 if hit:
                     matched_rows.append(

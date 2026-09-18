@@ -287,3 +287,80 @@ def test_union_convergence_rows_are_written(tmp_path: Path) -> None:
     assert manifest["convergence_tolerance"] == 1.0
     assert manifest["convergence_not_met"] == []
     assert manifest["convergence_undecidable"] == 0
+
+
+def test_non_finite_last_delta_is_not_converged() -> None:
+    steps = convergence_series({64: 100.0, 128: 90.0, 256: 0.0})
+    assert not np.isfinite(steps[-1].delta_previous)
+    assert not is_converged(steps, 0.2)
+
+
+def test_union_probability_equals_or_then_average(tmp_path: Path) -> None:
+    import zarr as _zarr
+
+    from particle_sim.failure.union import ANY_MODE, union_by_mode
+    from particle_sim.geometry.contact import DistanceCache
+    from particle_sim.io.stack import build_stack_z as _build_stack_z
+    from particle_sim.uncertainty.sampler import build_scenarios
+    from particle_sim.units import evaluate_units
+
+    manifest_path = write_case(build_case("triple_overlap"), tmp_path / "case")
+    scenario_path = _scenario_file(tmp_path, NOMINAL_SCENARIO, "nominal.yaml")
+    result = run_probability(
+        manifest_path, scenario_path, tmp_path / "run", sobol_exponent_m=6, seed=17
+    )
+    manifest = load_manifest(manifest_path)
+    masks = load_product_masks(manifest, manifest_path)
+    stack_z = _build_stack_z(manifest)
+    scenarios = build_scenarios(load_scenario_config(scenario_path), 6, 17)
+
+    step_id, diameter = "S_M2", 10.0
+    accumulated = np.zeros(masks.grid.shape_yx, dtype=np.float64)
+    for scenario in scenarios:
+        s_masks = apply_scenario_to_masks(manifest, masks, scenario)
+        s_stack = apply_scenario_to_stack(stack_z, scenario)
+        units = evaluate_units(
+            manifest, s_masks, s_stack, step_id,
+            max(diameter + scenario.particle_diameter_delta_um, 1e-9), DistanceCache(s_masks),
+        )
+        accumulated += union_by_mode(units)[ANY_MODE].any_failure.astype(np.float64)
+    expected = accumulated / len(scenarios)
+
+    store = _zarr.open_group(result.probability, mode="r")
+    steps = list(store.attrs["source_steps"])
+    sizes = [float(s) for s in store.attrs["particle_sizes_um"]]
+    keys = list(store.attrs["union_keys"])
+    stored = np.asarray(
+        store["union_probability"][steps.index(step_id), sizes.index(diameter),
+                                   keys.index(ANY_MODE)]
+    )
+    assert np.allclose(stored, expected, atol=1e-6)
+    # the union of overlapping pairs must stay below the sum of the pair probabilities
+    pair_sum = np.zeros(masks.grid.shape_yx, dtype=np.float64)
+    for unit_index in range(len(store.attrs["unit_ids"])):
+        pair_sum += np.asarray(
+            store["probability"][steps.index(step_id), sizes.index(diameter), unit_index]
+        )
+    assert stored.sum() < pair_sum.sum()
+
+
+def test_planarization_only_scenario_changes_the_stack(tmp_path: Path) -> None:
+    manifest_path = write_case(build_case("pilot"), tmp_path)
+    manifest = load_manifest(manifest_path)
+    stack_z = build_stack_z(manifest)
+    scenario = _empty_scenario(planarization_factor={"PLN": 0.2})
+    updated = apply_scenario_to_stack(stack_z, scenario)
+    assert stack_z["PLN"].planarization_factor == pytest.approx(0.8)
+    assert updated["PLN"].planarization_factor == pytest.approx(0.2)
+    assert updated["PLN"].z_top_um == pytest.approx(stack_z["PLN"].z_top_um)
+
+
+def test_anisotropic_cd_bias_grows_each_axis_physically() -> None:
+    grid = GridSpec(shape_yx=(20, 20), pixel_size_y_um=1.0, pixel_size_x_um=0.25)
+    mask = np.zeros((20, 20), dtype=bool)
+    mask[4:16, 4:16] = True
+    grown = transform_mask(mask, grid, cd_bias_um=0.5)
+    rows = np.where(grown.any(axis=1))[0]
+    cols = np.where(grown.any(axis=0))[0]
+    assert rows.min() == 3 and rows.max() == 16  # 0.5 um = 1 px at 1.0 um/px
+    assert cols.min() == 2 and cols.max() == 17  # 0.5 um = 2 px at 0.25 um/px

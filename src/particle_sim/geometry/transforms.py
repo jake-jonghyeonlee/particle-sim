@@ -11,21 +11,47 @@ from particle_sim.schema import ProductManifest
 from particle_sim.uncertainty.sampler import Scenario
 
 
+def _half_step_um(mask: np.ndarray, grid: GridSpec) -> np.ndarray:
+    """Half a pixel measured along the direction to the nearest opposite-phase pixel.
+
+    On an anisotropic grid a vertical edge sits half of `pixel_size_x_um` away while a
+    horizontal edge sits half of `pixel_size_y_um` away, so a single scalar cannot serve both.
+    """
+    sampling = (grid.pixel_size_y_um, grid.pixel_size_x_um)
+    rows, cols = np.mgrid[0 : mask.shape[0], 0 : mask.shape[1]]
+    half = np.zeros(mask.shape, dtype=np.float64)
+    for phase in (True, False):
+        target = ~mask if phase else mask
+        if not target.any():
+            continue
+        _, indices = distance_transform_edt(~target, sampling=sampling, return_indices=True)
+        dy_px = np.abs(indices[0] - rows).astype(np.float64)
+        dx_px = np.abs(indices[1] - cols).astype(np.float64)
+        length = np.hypot(dy_px, dx_px)
+        with np.errstate(invalid="ignore", divide="ignore"):
+            unit_y = np.where(length > 0, dy_px / length, 0.0)
+            unit_x = np.where(length > 0, dx_px / length, 0.0)
+        step = 0.5 * (unit_y * grid.pixel_size_y_um + unit_x * grid.pixel_size_x_um)
+        selection = mask if phase else ~mask
+        half[selection] = step[selection]
+    return half
+
+
 def signed_distance_um(mask: np.ndarray, grid: GridSpec) -> np.ndarray:
     """Distance from each pixel centre to the mask edge: negative inside, positive outside.
 
     `distance_transform_edt` measures the distance to the nearest pixel centre of the other
-    phase, while the drawn edge sits half a pixel before it, so half a pixel is removed.
-    `signed_distance_um(mask) <= 0` therefore reproduces the original mask exactly.
+    phase, while the drawn edge sits half a pixel before it, so half a step along that
+    direction is removed. `signed_distance_um(mask) <= 0` reproduces the original mask.
     """
     sampling = (grid.pixel_size_y_um, grid.pixel_size_x_um)
     if not mask.any():
         return np.full(mask.shape, np.inf, dtype=np.float64)
     if mask.all():
         return np.full(mask.shape, -np.inf, dtype=np.float64)
-    half_pixel_um = 0.5 * min(grid.pixel_size_y_um, grid.pixel_size_x_um)
-    outside = distance_transform_edt(~mask, sampling=sampling) - half_pixel_um
-    inside = distance_transform_edt(mask, sampling=sampling) - half_pixel_um
+    half = _half_step_um(mask, grid)
+    outside = distance_transform_edt(~mask, sampling=sampling) - half
+    inside = distance_transform_edt(mask, sampling=sampling) - half
     return np.where(mask, -inside, outside)
 
 
@@ -97,7 +123,7 @@ def apply_scenario_to_stack(
     stack_z: dict[str, LayerZ], scenario: Scenario
 ) -> dict[str, LayerZ]:
     """Re-accumulate z after adding the per-layer thickness deltas."""
-    if not scenario.thickness_delta_um:
+    if not scenario.thickness_delta_um and not scenario.planarization_factor:
         return stack_z
     ordered = sorted(stack_z.values(), key=lambda layer: layer.process_order)
     result: dict[str, LayerZ] = {}

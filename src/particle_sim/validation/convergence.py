@@ -52,7 +52,11 @@ def is_converged(steps: list[ConvergenceStep], tolerance: float) -> bool:
     """True when the last comparison is within `tolerance` (caller-provided, never default)."""
     if tolerance < 0:
         raise ValueError(f"허용 오차는 0 이상이어야 합니다: {tolerance}")
-    finite = [s.delta_previous for s in steps if np.isfinite(s.delta_previous)]
-    if not finite:
+    comparisons = [s.delta_previous for s in steps[1:]]
+    if not comparisons:
         return False
-    return finite[-1] <= tolerance
+    last = comparisons[-1]
+    if not np.isfinite(last):
+        # an infinite or undefined last comparison is never evidence of convergence
+        return False
+    return bool(last <= tolerance)

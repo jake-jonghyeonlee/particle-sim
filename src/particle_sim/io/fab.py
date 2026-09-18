@@ -5,6 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from pathlib import Path
 
+import numpy as np
 import pandas as pd
 
 from particle_sim.errors import InputContractError
@@ -86,6 +87,28 @@ def load_fab_table(path: Path, *, bin_method: str) -> FabTable:
 
     frame = frame[list(FAB_COLUMNS)].copy()
 
+    numeric_columns = (
+        "size_bin_left_um", "size_bin_right_um", "size_representative_um",
+        "particle_count", "inspection_area_mm2",
+    )
+    for column in numeric_columns:
+        values = pd.to_numeric(frame[column], errors="coerce")
+        if not np.isfinite(values).all():
+            raise InputContractError(
+                f"{column}에 비어 있거나 유한하지 않은 값이 있습니다",
+                file=str(path),
+                field=column,
+            )
+        frame[column] = values.astype(float)
+    density = pd.to_numeric(frame["density_per_mm2"], errors="coerce")
+    if np.isinf(density).any():
+        raise InputContractError(
+            "density_per_mm2에 유한하지 않은 값이 있습니다",
+            file=str(path),
+            field="density_per_mm2",
+        )
+    frame["density_per_mm2"] = density
+
     # product_family가 비어 있으면 "*"로 정규화
     # CSV의 빈 칸은 NaN으로 읽히므로 함께 정규화한다
     frame["product_family"] = (
@@ -142,6 +165,7 @@ def load_fab_table(path: Path, *, bin_method: str) -> FabTable:
             zip(group["size_bin_left_um"], group["size_bin_right_um"], strict=True)
         )
         for i in range(len(intervals) - 1):
+            # bins are half-open [left, right); touching bins are fine, overlaps are not
             if intervals[i][1] > intervals[i + 1][0]:
                 raise InputContractError(
                     "같은 그룹 안에서 bin 구간이 겹칩니다",
@@ -183,6 +207,10 @@ def load_fab_table(path: Path, *, bin_method: str) -> FabTable:
             field="size_bin_left_um",
         )
 
+    # deterministic order so that bin matching never depends on the input row order
+    frame = frame.sort_values(
+        ["fab_id", "product_family", "source_step", "size_bin_left_um"], kind="stable"
+    ).reset_index(drop=True)
     return FabTable(frame=frame, bin_method=bin_method, source=str(path))
 
 

@@ -213,3 +213,56 @@ def test_unsupported_mode_and_method(tmp_path: Path) -> None:
         )
     with pytest.raises(InputContractError, match="empirical_samples"):
         match_sizes(_ca_frame(), table.frame, bin_method="empirical_samples")
+
+
+def test_touching_bins_are_deterministic(tmp_path: Path) -> None:
+    rows = _fab_rows()
+    rows[1].update({"size_bin_left_um": 3.0, "size_bin_right_um": 5.0,
+                    "size_representative_um": 4.0})
+    forward = load_fab_table(_write_fab(tmp_path, rows, "fwd.csv"),
+                             bin_method="piecewise_constant")
+    reversed_rows = list(reversed(rows))
+    backward = load_fab_table(_write_fab(tmp_path, reversed_rows, "rev.csv"),
+                              bin_method="piecewise_constant")
+    ca = _ca_frame(sizes=(3.0,))
+    kwargs = dict(weighting_mode="actual", fab_id="FAB_A", product_family="F1",
+                  run_id="R", product_id="P", require_full_coverage=False)
+    first = apply_fab_weighting(ca, forward, **kwargs)
+    second = apply_fab_weighting(ca, backward, **kwargs)
+    # size 3.0 belongs to the half-open [3, 5) bin whatever the row order is
+    assert float(first["density_per_mm2"].iloc[0]) == pytest.approx(1.0)
+    assert first["density_per_mm2"].tolist() == second["density_per_mm2"].tolist()
+
+
+def test_exact_point_requires_exact_size(tmp_path: Path) -> None:
+    table = load_fab_table(_write_fab(tmp_path, _fab_rows()), bin_method="exact_point")
+    ca = _ca_frame(sizes=(2.0000001,))
+    with pytest.raises(InputContractError, match="연결되지 않은"):
+        apply_fab_weighting(
+            ca, table, weighting_mode="actual", fab_id="FAB_A", product_family="F1",
+            run_id="R", product_id="P",
+        )
+
+
+def test_piecewise_linear_passes_full_coverage(tmp_path: Path) -> None:
+    table = load_fab_table(_write_fab(tmp_path, _fab_rows()), bin_method="piecewise_linear")
+    ca = _ca_frame(sizes=(2.0, 3.0, 4.0))
+    weighted = apply_fab_weighting(
+        ca, table, weighting_mode="actual", fab_id="FAB_A", product_family="F1",
+        run_id="R", product_id="P",
+    )
+    assert weighted["density_per_mm2"].tolist() == pytest.approx([5.0, 3.0, 1.0])
+
+
+def test_non_finite_numbers_are_rejected(tmp_path: Path) -> None:
+    rows = _fab_rows()
+    rows[0]["particle_count"] = np.nan
+    rows[0]["density_per_mm2"] = np.nan
+    rows[1]["density_per_mm2"] = np.nan
+    with pytest.raises(InputContractError, match="particle_count"):
+        load_fab_table(_write_fab(tmp_path, rows, "nan.csv"), bin_method="piecewise_constant")
+    infinite = _fab_rows()
+    infinite[0]["inspection_area_mm2"] = np.inf
+    with pytest.raises(InputContractError, match="inspection_area_mm2"):
+        load_fab_table(_write_fab(tmp_path, infinite, "inf.csv"),
+                       bin_method="piecewise_constant")

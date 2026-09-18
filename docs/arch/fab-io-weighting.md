@@ -30,7 +30,9 @@ def load_fab_table(path: Path, *, bin_method: str) -> FabTable
 - `.parquet` -> `pandas.read_parquet`, `.csv` -> `pandas.read_csv`; 다른 확장자는
   InputContractError(file=path, field="fab_data").
 - 읽기 실패(OSError/ValueError)는 InputContractError로 변환한다.
-- `bin_method`가 `BIN_METHODS`에 없으면 InputContractError(field="bin_method").
+- `bin_method`가 `BIN_METHODS`에 없거나 `empirical_samples`이면 로드 시점에
+  InputContractError(field="bin_method").
+- 수치 열에 비어 있거나 유한하지 않은 값이 있으면 거부한다(NaN 전파 금지).
   기본값을 임의로 고르지 않는다(호출자가 반드시 지정).
 - 필수 열 누락 -> InputContractError(field=첫 누락 열). 빈 표 -> InputContractError.
 - 검증(모두 InputContractError, field에 열 이름):
@@ -65,10 +67,11 @@ def match_sizes(ca: pandas.DataFrame, density: pandas.DataFrame, *, bin_method: 
                 ) -> pandas.DataFrame
 ```
 `ca`는 `particle_size_um`과 `ca_*_um2` 열을 가진다. bin_method별 연결 규칙:
-- `exact_point`: `particle_size_um == size_representative_um`인 행만 곱한다.
-- `piecewise_constant`: `size_bin_left_um <= particle_size_um <= size_bin_right_um`.
+- `exact_point`: `particle_size_um == size_representative_um`인 행만 곱한다(정확 비교, 허용 오차 없음).
+- `piecewise_constant`: 반개구간 `left <= size < right`로 판정한다(마지막 bin만 오른쪽 경계 포함).
+  경계가 맞닿은 bin에서도 입력 행 순서와 무관하게 같은 결과가 나와야 한다.
 - `piecewise_linear`: 대표점 사이 선형 보간으로 각 `particle_size_um`의 density를 구한다.
-  관측 범위 밖은 외삽하지 않고 제외한다.
+  관측 범위 밖은 외삽하지 않고 제외한다. 보간에 사용한 양쪽 대표 bin을 모두 연결된 것으로 본다.
 - `empirical_samples`: 이 단계에서 지원하지 않는다 -> InputContractError(field="bin_method").
 연결되지 않은 (size, bin)은 버리지 말고 반환 프레임의 `unmatched` 속성 대신 별도 반환값으로 준다:
 `match_sizes`는 `(matched, unmatched_sizes: list[float], unmatched_bins: list[float])`
