@@ -10,6 +10,7 @@ from dataclasses import dataclass
 import numpy as np
 
 CONVERGENCE_COLUMNS: tuple[str, ...] = (
+    "scramble_seed",
     "source_step",
     "particle_size_um",
     "pair_id",

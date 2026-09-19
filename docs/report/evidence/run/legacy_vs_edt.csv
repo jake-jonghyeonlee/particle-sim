@@ -1,0 +1,16 @@
+particle_size_um,pair_id,equal,n_diff,only_in_reference,only_in_candidate,kernel_quantization,kernel_shape,unexplained
+2.0,A__B,True,0,0,0,0,0,0
+2.0,G__A,True,0,0,0,0,0,0
+2.0,B__P,True,0,0,0,0,0,0
+4.0,A__B,True,0,0,0,0,0,0
+4.0,G__A,True,0,0,0,0,0,0
+4.0,B__P,True,0,0,0,0,0,0
+6.0,A__B,True,0,0,0,0,0,0
+6.0,G__A,True,0,0,0,0,0,0
+6.0,B__P,True,0,0,0,0,0,0
+8.0,A__B,True,0,0,0,0,0,0
+8.0,G__A,True,0,0,0,0,0,0
+8.0,B__P,True,0,0,0,0,0,0
+10.0,A__B,True,0,0,0,0,0,0
+10.0,G__A,True,0,0,0,0,0,0
+10.0,B__P,True,0,0,0,0,0,0

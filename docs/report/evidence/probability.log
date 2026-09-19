@@ -1,0 +1,14 @@
+{
+  "status": "ok",
+  "run_id": "20260918T045418Z_SYN_PILOT",
+  "scenario_count": 64,
+  "outputs": {
+    "probability": "docs/report/work/prob/probability.zarr",
+    "ca_table": "docs/report/work/prob/ca.parquet",
+    "union_table": "docs/report/work/prob/ca_union.parquet",
+    "convergence": "docs/report/work/prob/convergence.csv",
+    "run_manifest": "docs/report/work/prob/run_manifest.json"
+  }
+}
+        5.79 real         5.39 user         0.26 sys
+time: sysctl kern.clockrate: Operation not permitted

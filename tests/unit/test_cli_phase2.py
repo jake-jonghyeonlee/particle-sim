@@ -101,3 +101,113 @@ def test_apply_fab_requires_bin_method(case: tuple[Path, Path], tmp_path: Path) 
             "--mode", "common",
             "--output", str(tmp_path / "out.parquet"),
         ])
+
+
+def test_apply_fab_run_writes_additive_risk_views(
+    case: tuple[Path, Path], tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    manifest_path, _ = case
+    run_dir = tmp_path / "nominal"
+    assert main([
+        "simulate-nominal", "--product-config", str(manifest_path),
+        "--output", str(run_dir),
+    ]) == 0
+    capsys.readouterr()
+    fab_path = write_fab_table(tmp_path / "fab-run")
+    risk_dir = tmp_path / "risk"
+    assert main([
+        "apply-fab", "--run", str(run_dir), "--fab-data", str(fab_path),
+        "--product-config", str(manifest_path), "--bin-method", "exact_point",
+        "--mode", "actual", "--output", str(risk_dir),
+    ]) == 0
+    capsys.readouterr()
+    pair = pd.read_parquet(risk_dir / "risk_by_pair.parquet")
+    layer = pd.read_parquet(risk_dir / "risk_by_layer.parquet")
+    electrode = pd.read_parquet(risk_dir / "risk_by_electrode.parquet")
+    source_total = layer.loc[
+        layer["layer_scope"] == "particle_source_layer", "geometric_hit_expectation"
+    ].sum()
+    assert pair["allocated_geometric_hit_expectation"].sum() == pytest.approx(source_total)
+    assert electrode["allocated_electrode_contribution"].sum() == pytest.approx(
+        source_total
+    )
+    assert (
+        electrode["involvement_geometric_hit_expectation"]
+        >= electrode["allocated_electrode_contribution"]
+    ).all()
+    assert (risk_dir / "risk_by_open_path.parquet").is_file()
+    assert (risk_dir / "risk_summary.csv").is_file()
+    assert (risk_dir / "risk_manifest.json").is_file()
+    assert {
+        "fab_input_semantics", "particle_count_value", "inspection_area_mm2",
+        "measurement_period", "particle_type", "fab_source_id", "fab_source_hash",
+    } <= set(pair.columns)
+    summary = pd.read_csv(risk_dir / "risk_summary.csv")
+    assert {"fab_id", "weighting_mode"} <= set(summary.columns)
+    risk_manifest = json.loads((risk_dir / "risk_manifest.json").read_text(encoding="utf-8"))
+    assert risk_manifest["fab_input_semantics"] == "total_count"
+    assert len(risk_manifest["fab_source_sha256"]) == 64
+    assert len(risk_manifest["product_config_sha256"]) == 64
+    assert len(risk_manifest["source_run_manifest_sha256"]) == 64
+    assert {item["path"] for item in risk_manifest["artifacts"]} == {
+        "risk_by_layer.parquet", "risk_by_pair.parquet", "risk_by_open_path.parquet",
+        "risk_by_contact.parquet", "risk_by_electrode.parquet", "risk_summary.csv",
+    }
+
+
+def test_apply_fab_run_rejects_modified_ca_artifact(
+    case: tuple[Path, Path], tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    manifest_path, _ = case
+    run_dir = tmp_path / "nominal-modified"
+    assert main([
+        "simulate-nominal", "--product-config", str(manifest_path),
+        "--output", str(run_dir),
+    ]) == 0
+    capsys.readouterr()
+    ca_path = run_dir / "ca.parquet"
+    ca = pd.read_parquet(ca_path)
+    ca.loc[0, "ca_nominal_um2"] += 1.0
+    ca.to_parquet(ca_path, index=False)
+    fab_path = write_fab_table(tmp_path / "fab-modified")
+    assert main([
+        "apply-fab", "--run", str(run_dir), "--fab-data", str(fab_path),
+        "--product-config", str(manifest_path), "--bin-method", "exact_point",
+        "--mode", "actual", "--output", str(tmp_path / "risk-modified"),
+    ]) == 2
+    assert "run manifest 기록과 다릅니다" in capsys.readouterr().err
+
+
+def test_risk_tables_reject_unknown_unit_and_missing_any_union(
+    case: tuple[Path, Path], tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    from particle_sim.aggregation.risk_tables import build_risk_tables
+    from particle_sim.config import load_manifest
+    from particle_sim.errors import InputContractError
+    from particle_sim.io.fab import load_fab_table
+
+    manifest_path, _ = case
+    run_dir = tmp_path / "nominal-risk-contract"
+    assert main([
+        "simulate-nominal", "--product-config", str(manifest_path),
+        "--output", str(run_dir),
+    ]) == 0
+    capsys.readouterr()
+    ca = pd.read_parquet(run_dir / "ca.parquet")
+    union = pd.read_parquet(run_dir / "ca_union.parquet")
+    table = load_fab_table(write_fab_table(tmp_path / "fab-contract"), bin_method="exact_point")
+    manifest = load_manifest(manifest_path)
+
+    bad_ca = ca.copy()
+    bad_ca.loc[0, "unit_kind"] = "unknown"
+    with pytest.raises(InputContractError, match="unit_kind"):
+        build_risk_tables(
+            bad_ca, union, table, manifest, fab_id=manifest.fab_id, weighting_mode="actual"
+        )
+
+    missing_union = union.drop(union[union["failure_mode"] == "any"].index[0])
+    with pytest.raises(InputContractError, match="1:1"):
+        build_risk_tables(
+            ca, missing_union, table, manifest,
+            fab_id=manifest.fab_id, weighting_mode="actual",
+        )

@@ -23,6 +23,24 @@ FAB_COLUMNS: tuple[str, ...] = (
     "density_per_mm2",
     "particle_type",
 )
+FAB_MEAN_COLUMNS: tuple[str, ...] = (
+    "fab_id",
+    "product_family",
+    "fab_distribution_layer",
+    "size_bin_left_um",
+    "size_bin_right_um",
+    "size_representative_um",
+    "mean_particle_count",
+    "inspection_area_per_sample_mm2",
+    "measurement_period",
+    "mean_density_per_mm2",
+    "particle_type",
+)
+FAB_MEAN_OPTIONAL_COLUMNS: tuple[str, ...] = (
+    "sample_count",
+    "source_id",
+    "source_hash",
+)
 
 BIN_METHODS: tuple[str, ...] = (
     "exact_point",
@@ -39,6 +57,7 @@ class FabTable:
     frame: pd.DataFrame
     bin_method: str
     source: str
+    input_semantics: str = "total_count"
 
 
 def load_fab_table(path: Path, *, bin_method: str) -> FabTable:
@@ -76,7 +95,14 @@ def load_fab_table(path: Path, *, bin_method: str) -> FabTable:
             f"지원하지 않는 확장자입니다: {suffix}", file=str(path), field="fab_data"
         )
 
-    for col in FAB_COLUMNS:
+    mean_required = tuple(
+        column for column in FAB_MEAN_COLUMNS if column != "mean_density_per_mm2"
+    )
+    mean_contract = all(column in frame.columns for column in mean_required)
+    required_columns = FAB_MEAN_COLUMNS if mean_contract else FAB_COLUMNS
+    if mean_contract and "mean_density_per_mm2" not in frame.columns:
+        frame["mean_density_per_mm2"] = np.nan
+    for col in required_columns:
         if col not in frame.columns:
             raise InputContractError(
                 f"필수 열이 누락되었습니다: {col}", file=str(path), field=col
@@ -85,7 +111,19 @@ def load_fab_table(path: Path, *, bin_method: str) -> FabTable:
     if frame.empty:
         raise InputContractError("표가 비어 있습니다", file=str(path), field="fab_data")
 
-    frame = frame[list(FAB_COLUMNS)].copy()
+    selected = [*required_columns]
+    if mean_contract:
+        selected.extend(column for column in FAB_MEAN_OPTIONAL_COLUMNS if column in frame.columns)
+    frame = frame[selected].copy()
+    if mean_contract:
+        frame = frame.rename(
+            columns={
+                "fab_distribution_layer": "source_step",
+                "mean_particle_count": "particle_count",
+                "inspection_area_per_sample_mm2": "inspection_area_mm2",
+                "mean_density_per_mm2": "density_per_mm2",
+            }
+        )
 
     numeric_columns = (
         "size_bin_left_um", "size_bin_right_um", "size_representative_um",
@@ -115,6 +153,30 @@ def load_fab_table(path: Path, *, bin_method: str) -> FabTable:
         frame["product_family"].astype("object").where(frame["product_family"].notna(), "*")
     )
     frame["product_family"] = frame["product_family"].replace("", "*").astype(str)
+
+    for column in ("fab_id", "source_step", "measurement_period", "particle_type"):
+        blank = frame[column].isna() | frame[column].astype(str).str.strip().eq("")
+        if blank.any():
+            raise InputContractError(
+                f"{column}가 비어 있을 수 없습니다",
+                file=str(path),
+                field=column,
+            )
+    if "sample_count" in frame.columns:
+        sample_count = pd.to_numeric(frame["sample_count"], errors="coerce")
+        supplied = frame["sample_count"].notna()
+        invalid = supplied & (
+            ~np.isfinite(sample_count)
+            | (sample_count <= 0)
+            | (sample_count != np.floor(sample_count))
+        )
+        if invalid.any():
+            raise InputContractError(
+                "sample_count는 비어 있거나 1 이상의 정수여야 합니다",
+                file=str(path),
+                field="sample_count",
+            )
+        frame["sample_count"] = sample_count.astype("Int64")
 
     # density_per_mm2 자동 계산 또는 검증
     computed = frame["particle_count"] / frame["inspection_area_mm2"]
@@ -187,15 +249,7 @@ def load_fab_table(path: Path, *, bin_method: str) -> FabTable:
             field="inspection_area_mm2",
         )
 
-    # 5. measurement_period가 비어 있지 않음
-    if frame["measurement_period"].isna().any() or (frame["measurement_period"] == "").any():
-        raise InputContractError(
-            "measurement_period가 비어 있을 수 없습니다",
-            file=str(path),
-            field="measurement_period",
-        )
-
-    # 7. 같은 (fab_id, product_family, source_step, size_bin_left_um) 행 중복
+    # 5. 같은 (fab_id, product_family, source_step, size_bin_left_um) 행 중복
     dup_mask = frame.duplicated(
         subset=["fab_id", "product_family", "source_step", "size_bin_left_um"],
         keep=False,
@@ -211,7 +265,12 @@ def load_fab_table(path: Path, *, bin_method: str) -> FabTable:
     frame = frame.sort_values(
         ["fab_id", "product_family", "source_step", "size_bin_left_um"], kind="stable"
     ).reset_index(drop=True)
-    return FabTable(frame=frame, bin_method=bin_method, source=str(path))
+    return FabTable(
+        frame=frame,
+        bin_method=bin_method,
+        source=str(path),
+        input_semantics="mean_per_sample" if mean_contract else "total_count",
+    )
 
 
 def fab_density_for(
@@ -236,3 +295,15 @@ def fab_density_for(
             field="source_step",
         )
     return result
+
+
+def fab_density_for_layer(
+    table: FabTable, *, fab_id: str, product_family: str, fab_distribution_layer: str
+) -> pd.DataFrame:
+    """Fab 측정 layer로 평균 이물 밀도 행을 조회한다."""
+    return fab_density_for(
+        table,
+        fab_id=fab_id,
+        product_family=product_family,
+        source_step=fab_distribution_layer,
+    )

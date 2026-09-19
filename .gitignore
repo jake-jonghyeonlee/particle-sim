@@ -6,3 +6,6 @@ __pycache__/
 .mypy_cache/
 outputs/
 data/
+
+# report run outputs and PDF tool environment (regenerable, ~1 GB)
+docs/report/work/

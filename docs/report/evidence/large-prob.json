@@ -1,0 +1,23 @@
+{
+  "command": [
+    ".venv/bin/python",
+    "-m",
+    "particle_sim",
+    "simulate-probability",
+    "--product-config",
+    "docs/report/work/large-case/manifest-five.yaml",
+    "--scenario-config",
+    "configs/scenarios/nominal.yaml",
+    "--sobol-m",
+    "6",
+    "--seed",
+    "42",
+    "--output",
+    "docs/report/work/large-prob"
+  ],
+  "returncode": 0,
+  "wall_seconds": 102.25402037496679,
+  "peak_rss_bytes": 1072398336,
+  "stdout": "{\n  \"status\": \"ok\",\n  \"run_id\": \"20260918T045616Z_SYN_BENCH_1000\",\n  \"scenario_count\": 64,\n  \"outputs\": {\n    \"probability\": \"docs/report/work/large-prob/probability.zarr\",\n    \"ca_table\": \"docs/report/work/large-prob/ca.parquet\",\n    \"union_table\": \"docs/report/work/large-prob/ca_union.parquet\",\n    \"convergence\": \"docs/report/work/large-prob/convergence.csv\",\n    \"run_manifest\": \"docs/report/work/large-prob/run_manifest.json\"\n  }\n}\n",
+  "stderr": ""
+}

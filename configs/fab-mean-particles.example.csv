@@ -1,0 +1,3 @@
+fab_id,product_family,fab_distribution_layer,size_bin_left_um,size_bin_right_um,size_representative_um,mean_particle_count,inspection_area_per_sample_mm2,measurement_period,mean_density_per_mm2,particle_type,sample_count,source_id,source_hash
+FAB_EXAMPLE,PRODUCT_EXAMPLE,mask1,1.0,3.0,2.0,2.5,50.0,replace-with-period,0.05,replace-with-type,12,replace-with-source-id,replace-with-source-hash
+FAB_EXAMPLE,PRODUCT_EXAMPLE,mask1,3.0,5.0,4.0,1.0,50.0,replace-with-period,0.02,replace-with-type,12,replace-with-source-id,replace-with-source-hash

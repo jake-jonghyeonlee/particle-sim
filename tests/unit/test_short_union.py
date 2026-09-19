@@ -85,6 +85,33 @@ def test_union_removes_overlap(tmp_path_factory: pytest.TempPathFactory) -> None
     assert int(small_union.any_failure.sum()) == sum(int(r.failure.sum()) for r in small)
 
 
+def test_complex_multilayer_pairs_are_monotone_and_keep_negative_controls(
+    tmp_path_factory: pytest.TempPathFactory,
+) -> None:
+    bundle = _load(tmp_path_factory, "complex_multilayer")
+    manifest, masks, stack_z, cache = bundle
+    previous: dict[str, np.ndarray] = {}
+    results = []
+    for diameter in manifest.particle_sizes_um:
+        results = simulate_pairs(manifest, masks, stack_z, "S_M1", diameter, cache)
+        for result in results:
+            if result.pair_id in previous:
+                assert np.all(previous[result.pair_id] <= result.failure)
+            previous[result.pair_id] = result.failure
+
+    by_id = {result.pair_id: result for result in results}
+    expected_vertical = {
+        "G1__D1", "G2__D1", "G2__D3", "G3__D2",
+        "D1__P1", "D2__P3", "D3__P2", "D4__P3",
+    }
+    assert all(by_id[pair_id].failure.any() for pair_id in expected_vertical)
+    assert not by_id["G1__D4"].failure.any()
+    assert not by_id["G3__D3"].failure.any()
+    union = union_by_mode(results)[ANY_MODE]
+    assert union.pair_count.max() >= 3
+    assert int(union.any_failure.sum()) < sum(int(r.failure.sum()) for r in results)
+
+
 def test_pair_margin_and_classification(tmp_path_factory: pytest.TempPathFactory) -> None:
     manifest, masks, stack_z, cache = _load(tmp_path_factory, "pilot")
     contacts = compute_electrode_contacts(

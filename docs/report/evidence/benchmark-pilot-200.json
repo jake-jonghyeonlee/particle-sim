@@ -1,0 +1,115 @@
+{
+  "label": "pilot-200",
+  "manifest": "/Users/jonghyeonlee/git/particle-sim/docs/report/work/bench-pilot-200-case/manifest.yaml",
+  "manifest_sha256": "4dc389d4ecac09a7434c48136b0f6173a3024b946193d82af32c265c8b674a20",
+  "python": "3.12.13 (main, Mar  3 2026, 12:39:30) [Clang 21.0.0 (clang-2100.0.123.102)]",
+  "platform": "macOS-26.5.2-arm64-arm-64bit",
+  "warmup": {
+    "wall_seconds": 1.2863410410936922,
+    "peak_rss_bytes": 191594496,
+    "output_bytes": 84456,
+    "config_hash": "08108901bb742226a5fefdd0f49ef93ed04e9f63b83e7a5c739b1b2ebd95c7ff",
+    "input_hashes": {
+      "manifest": "4dc389d4ecac09a7434c48136b0f6173a3024b946193d82af32c265c8b674a20",
+      "masks/electrode_A.png": "43a31e7a3c0207e74320f3f114cf3ec36748bf9154e0b5852f609ce03d5cdee7",
+      "masks/electrode_B.png": "07b8f37dfab64d1262f92332d81f613eed191aa3ebaa9ba828f8612e2bd76279",
+      "masks/electrode_G.png": "013e98431becf2acb6a81883b3aa188ff023891b84937cd6a43bb757d6b6292a",
+      "masks/electrode_P.png": "236e9048d5611894c4769a4c64eff3b1da85c0b8e064b239803c933b3896a285",
+      "masks/layer_M1.png": "013e98431becf2acb6a81883b3aa188ff023891b84937cd6a43bb757d6b6292a",
+      "masks/layer_M2.png": "ec7c40dad5aa4b60c7cba903ca000a029b953f476939e53c6005f0d2f4c462cf",
+      "masks/layer_M3.png": "236e9048d5611894c4769a4c64eff3b1da85c0b8e064b239803c933b3896a285"
+    }
+  },
+  "runs": [
+    {
+      "wall_seconds": 1.2379956669174135,
+      "peak_rss_bytes": 192348160,
+      "output_bytes": 84456,
+      "config_hash": "08108901bb742226a5fefdd0f49ef93ed04e9f63b83e7a5c739b1b2ebd95c7ff",
+      "input_hashes": {
+        "manifest": "4dc389d4ecac09a7434c48136b0f6173a3024b946193d82af32c265c8b674a20",
+        "masks/electrode_A.png": "43a31e7a3c0207e74320f3f114cf3ec36748bf9154e0b5852f609ce03d5cdee7",
+        "masks/electrode_B.png": "07b8f37dfab64d1262f92332d81f613eed191aa3ebaa9ba828f8612e2bd76279",
+        "masks/electrode_G.png": "013e98431becf2acb6a81883b3aa188ff023891b84937cd6a43bb757d6b6292a",
+        "masks/electrode_P.png": "236e9048d5611894c4769a4c64eff3b1da85c0b8e064b239803c933b3896a285",
+        "masks/layer_M1.png": "013e98431becf2acb6a81883b3aa188ff023891b84937cd6a43bb757d6b6292a",
+        "masks/layer_M2.png": "ec7c40dad5aa4b60c7cba903ca000a029b953f476939e53c6005f0d2f4c462cf",
+        "masks/layer_M3.png": "236e9048d5611894c4769a4c64eff3b1da85c0b8e064b239803c933b3896a285"
+      }
+    },
+    {
+      "wall_seconds": 1.234905666904524,
+      "peak_rss_bytes": 193740800,
+      "output_bytes": 84456,
+      "config_hash": "08108901bb742226a5fefdd0f49ef93ed04e9f63b83e7a5c739b1b2ebd95c7ff",
+      "input_hashes": {
+        "manifest": "4dc389d4ecac09a7434c48136b0f6173a3024b946193d82af32c265c8b674a20",
+        "masks/electrode_A.png": "43a31e7a3c0207e74320f3f114cf3ec36748bf9154e0b5852f609ce03d5cdee7",
+        "masks/electrode_B.png": "07b8f37dfab64d1262f92332d81f613eed191aa3ebaa9ba828f8612e2bd76279",
+        "masks/electrode_G.png": "013e98431becf2acb6a81883b3aa188ff023891b84937cd6a43bb757d6b6292a",
+        "masks/electrode_P.png": "236e9048d5611894c4769a4c64eff3b1da85c0b8e064b239803c933b3896a285",
+        "masks/layer_M1.png": "013e98431becf2acb6a81883b3aa188ff023891b84937cd6a43bb757d6b6292a",
+        "masks/layer_M2.png": "ec7c40dad5aa4b60c7cba903ca000a029b953f476939e53c6005f0d2f4c462cf",
+        "masks/layer_M3.png": "236e9048d5611894c4769a4c64eff3b1da85c0b8e064b239803c933b3896a285"
+      }
+    },
+    {
+      "wall_seconds": 1.2379617081023753,
+      "peak_rss_bytes": 192561152,
+      "output_bytes": 84456,
+      "config_hash": "08108901bb742226a5fefdd0f49ef93ed04e9f63b83e7a5c739b1b2ebd95c7ff",
+      "input_hashes": {
+        "manifest": "4dc389d4ecac09a7434c48136b0f6173a3024b946193d82af32c265c8b674a20",
+        "masks/electrode_A.png": "43a31e7a3c0207e74320f3f114cf3ec36748bf9154e0b5852f609ce03d5cdee7",
+        "masks/electrode_B.png": "07b8f37dfab64d1262f92332d81f613eed191aa3ebaa9ba828f8612e2bd76279",
+        "masks/electrode_G.png": "013e98431becf2acb6a81883b3aa188ff023891b84937cd6a43bb757d6b6292a",
+        "masks/electrode_P.png": "236e9048d5611894c4769a4c64eff3b1da85c0b8e064b239803c933b3896a285",
+        "masks/layer_M1.png": "013e98431becf2acb6a81883b3aa188ff023891b84937cd6a43bb757d6b6292a",
+        "masks/layer_M2.png": "ec7c40dad5aa4b60c7cba903ca000a029b953f476939e53c6005f0d2f4c462cf",
+        "masks/layer_M3.png": "236e9048d5611894c4769a4c64eff3b1da85c0b8e064b239803c933b3896a285"
+      }
+    },
+    {
+      "wall_seconds": 1.2151009999215603,
+      "peak_rss_bytes": 193871872,
+      "output_bytes": 84456,
+      "config_hash": "08108901bb742226a5fefdd0f49ef93ed04e9f63b83e7a5c739b1b2ebd95c7ff",
+      "input_hashes": {
+        "manifest": "4dc389d4ecac09a7434c48136b0f6173a3024b946193d82af32c265c8b674a20",
+        "masks/electrode_A.png": "43a31e7a3c0207e74320f3f114cf3ec36748bf9154e0b5852f609ce03d5cdee7",
+        "masks/electrode_B.png": "07b8f37dfab64d1262f92332d81f613eed191aa3ebaa9ba828f8612e2bd76279",
+        "masks/electrode_G.png": "013e98431becf2acb6a81883b3aa188ff023891b84937cd6a43bb757d6b6292a",
+        "masks/electrode_P.png": "236e9048d5611894c4769a4c64eff3b1da85c0b8e064b239803c933b3896a285",
+        "masks/layer_M1.png": "013e98431becf2acb6a81883b3aa188ff023891b84937cd6a43bb757d6b6292a",
+        "masks/layer_M2.png": "ec7c40dad5aa4b60c7cba903ca000a029b953f476939e53c6005f0d2f4c462cf",
+        "masks/layer_M3.png": "236e9048d5611894c4769a4c64eff3b1da85c0b8e064b239803c933b3896a285"
+      }
+    },
+    {
+      "wall_seconds": 1.266989165917039,
+      "peak_rss_bytes": 196378624,
+      "output_bytes": 84456,
+      "config_hash": "08108901bb742226a5fefdd0f49ef93ed04e9f63b83e7a5c739b1b2ebd95c7ff",
+      "input_hashes": {
+        "manifest": "4dc389d4ecac09a7434c48136b0f6173a3024b946193d82af32c265c8b674a20",
+        "masks/electrode_A.png": "43a31e7a3c0207e74320f3f114cf3ec36748bf9154e0b5852f609ce03d5cdee7",
+        "masks/electrode_B.png": "07b8f37dfab64d1262f92332d81f613eed191aa3ebaa9ba828f8612e2bd76279",
+        "masks/electrode_G.png": "013e98431becf2acb6a81883b3aa188ff023891b84937cd6a43bb757d6b6292a",
+        "masks/electrode_P.png": "236e9048d5611894c4769a4c64eff3b1da85c0b8e064b239803c933b3896a285",
+        "masks/layer_M1.png": "013e98431becf2acb6a81883b3aa188ff023891b84937cd6a43bb757d6b6292a",
+        "masks/layer_M2.png": "ec7c40dad5aa4b60c7cba903ca000a029b953f476939e53c6005f0d2f4c462cf",
+        "masks/layer_M3.png": "236e9048d5611894c4769a4c64eff3b1da85c0b8e064b239803c933b3896a285"
+      }
+    }
+  ],
+  "summary": {
+    "repeats": 5,
+    "wall_median_seconds": 1.2379617081023753,
+    "wall_min_seconds": 1.2151009999215603,
+    "wall_max_seconds": 1.266989165917039,
+    "wall_mean_seconds": 1.2385906415525825,
+    "wall_cv": 0.013376858856143687,
+    "peak_rss_max_bytes": 196378624,
+    "output_bytes_median": 84456
+  }
+}

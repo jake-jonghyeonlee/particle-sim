@@ -128,6 +128,12 @@ def apply_fab_weighting(
             f"weighting_mode '{weighting_mode}'은(는) common 또는 actual이어야 합니다",
             field="weighting_mode",
         )
+    if table.input_semantics == "mean_per_sample" and table.bin_method != "exact_point":
+        raise InputContractError(
+            "평균 이물 개수 입력은 한 크기 bin을 한 대표 직경에 연결하는 exact_point만 "
+            "지원합니다",
+            field="bin_method",
+        )
     for column in ("source_step", "particle_size_um", "pair_id", "failure_mode"):
         if column not in ca.columns:
             raise InputContractError(

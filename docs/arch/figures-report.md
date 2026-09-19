@@ -25,7 +25,7 @@ def plot_pair_panels(legacy: np.ndarray, nominal: np.ndarray, margin_um: np.ndar
 # contact margin (cmap "RdBu", symmetric fixed range +-max(finite |margin|, 1e-9),
 # non-finite shown as NaN), colorbars, extent in um
 def plot_ca_curves(ca: pandas.DataFrame, step_id: str, path: Path) -> Path
-# x particle_size_um, y ca_nominal_um2 (solid) and ca_legacy_um2 (dashed) per pair_id
+# x particle_size_um, y ca_nominal_um2 (solid) and ca_legacy_um2 (dashed) per failure_unit_id
 def plot_union_vs_sum(union: pandas.DataFrame, step_id: str, path: Path) -> Path
 # per failure_mode: ca_union_nominal_um2 vs ca_pair_sum_nominal_um2 over particle size
 ```

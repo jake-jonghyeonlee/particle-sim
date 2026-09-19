@@ -5,6 +5,7 @@ from __future__ import annotations
 import numpy as np
 from scipy.ndimage import distance_transform_edt, map_coordinates
 
+from particle_sim.geometry.contacts import build_contact_topology
 from particle_sim.io.masks import GridSpec, MaskSet
 from particle_sim.io.stack import LayerZ
 from particle_sim.schema import ProductManifest
@@ -114,8 +115,35 @@ def apply_scenario_to_masks(
         electrodes[electrode_id] = transform_mask(
             mask, grid, overlay_xy_um=overlay, cd_bias_um=cd_bias
         )
+    terminal_regions: dict[str, tuple[np.ndarray, np.ndarray]] = {}
+    open_paths = {item.path_id: item for item in manifest.open_paths}
+    for path_id, regions in (masks.terminal_regions or {}).items():
+        layer_name = layer_of[open_paths[path_id].electrode]
+        overlay, _cd_bias = variation(layer_name)
+        terminal_regions[path_id] = tuple(
+            transform_mask(region, grid, overlay_xy_um=overlay, cd_bias_um=0.0)
+            for region in regions
+        )
+    contact_masks: dict[str, np.ndarray] = {}
+    for contact in manifest.contacts:
+        overlay, cd_bias = variation(contact.hole_layer)
+        contact_masks[contact.contact_id] = transform_mask(
+            (masks.contact_masks or {})[contact.contact_id],
+            grid,
+            overlay_xy_um=overlay,
+            cd_bias_um=cd_bias,
+        )
     return MaskSet(
-        grid=grid, layers=layers, electrodes=electrodes, input_hashes=masks.input_hashes
+        grid=grid,
+        layers=layers,
+        electrodes=electrodes,
+        input_hashes=masks.input_hashes,
+        terminal_regions=terminal_regions,
+        layer_unassigned_pixels=masks.layer_unassigned_pixels,
+        contact_masks=contact_masks,
+        contact_topology=build_contact_topology(
+            manifest, contact_masks, electrodes, strict=False
+        ),
     )
 
 

@@ -15,6 +15,11 @@ from particle_sim.schema import OpenPath, ProductManifest
 # built from the XY distance map so it stays consistent with the contact model.
 CONFIRMED = "open_confirmed"
 PROXY = "open_proxy"
+# Excluded conditions: the path is already broken, or a terminal has no electrode left, before
+# any particle lands. Counting every candidate as open there would blame particles for it.
+BASELINE_OPEN = "baseline_open"
+TERMINAL_LOST = "terminal_lost"
+EXCLUDED_CLASSIFICATIONS = (BASELINE_OPEN, TERMINAL_LOST)
 
 
 @dataclass(frozen=True)
@@ -22,10 +27,11 @@ class OpenResult:
     path_id: str
     electrode: str
     failure: np.ndarray  # bool (y, x): particle centre positions that open the path
-    classification: str  # CONFIRMED | PROXY
+    classification: str  # CONFIRMED | PROXY | BASELINE_OPEN | TERMINAL_LOST
     terminal_a_yx: tuple[int, int]
     terminal_b_yx: tuple[int, int]
     candidates: int  # evaluated particle centres (skeleton-reduced)
+    terminal_kind: str = "point"
 
 
 def blocked_mask(
@@ -49,10 +55,36 @@ def causes_open(
     return label_a == 0 or label_b == 0 or label_a != label_b
 
 
+def causes_open_regions(
+    electrode_mask: np.ndarray,
+    blocked: np.ndarray,
+    terminal_a: np.ndarray,
+    terminal_b: np.ndarray,
+) -> bool:
+    """두 단자 영역에서 살아남은 전극 픽셀 사이의 경로가 사라지면 True."""
+    damaged = electrode_mask & ~blocked
+    alive_a = damaged & terminal_a
+    alive_b = damaged & terminal_b
+    if not alive_a.any() or not alive_b.any():
+        return True
+    labels, _ = label(damaged)
+    labels_a = set(np.unique(labels[alive_a]).tolist()) - {0}
+    labels_b = set(np.unique(labels[alive_b]).tolist()) - {0}
+    return labels_a.isdisjoint(labels_b)
+
+
 def resolve_terminals(
-    open_path: OpenPath, electrode_mask: np.ndarray, product_id: str
+    open_path: OpenPath,
+    electrode_mask: np.ndarray,
+    product_id: str,
+    *,
+    require_on_electrode: bool = True,
 ) -> tuple[tuple[int, int], tuple[int, int], str]:
-    """Return both terminals and whether the result is confirmed or a proxy."""
+    """Return both terminals and whether the result is confirmed or a proxy.
+
+    A transformed scenario may move the electrode away from a fixed point terminal; the caller
+    then passes ``require_on_electrode=False`` and classifies the lost terminal instead.
+    """
     shape = electrode_mask.shape
     if open_path.terminal_a_yx_px is not None and open_path.terminal_b_yx_px is not None:
         terminals = (
@@ -67,7 +99,7 @@ def resolve_terminals(
                     product_id=product_id,
                     field=f"open_paths[{open_path.path_id}].{name}",
                 )
-            if not electrode_mask[terminal]:
+            if require_on_electrode and not electrode_mask[terminal]:
                 raise InputContractError(
                     f"open_path '{open_path.path_id}'의 {name} {terminal}가 전극 위에 없습니다",
                     product_id=product_id,
@@ -77,6 +109,8 @@ def resolve_terminals(
 
     if open_path.fallback == "roi_boundary":
         labels, count = label(electrode_mask)
+        if count == 0 and not require_on_electrode:
+            return (-1, -1), (-1, -1), PROXY
         if count == 0:
             raise InputContractError(
                 f"open_path '{open_path.path_id}'의 전극이 비어 있습니다",
@@ -97,6 +131,79 @@ def resolve_terminals(
         product_id=product_id,
         field=f"open_paths[{open_path.path_id}].fallback",
     )
+
+
+def resolve_terminal_regions(
+    open_path: OpenPath,
+    masks: MaskSet,
+    electrode_mask: np.ndarray,
+    product_id: str,
+    *,
+    require_on_electrode: bool = True,
+) -> tuple[np.ndarray, np.ndarray, str, str]:
+    """단자 mask를 우선 사용하고 점/fallback은 1픽셀 영역으로 변환한다."""
+    regions = (masks.terminal_regions or {}).get(open_path.path_id)
+    if regions is not None:
+        terminal_a, terminal_b = regions
+        return terminal_a, terminal_b, CONFIRMED, "region_mask"
+    point_a, point_b, classification = resolve_terminals(
+        open_path, electrode_mask, product_id, require_on_electrode=require_on_electrode
+    )
+    terminal_a = np.zeros(electrode_mask.shape, dtype=bool)
+    terminal_b = np.zeros(electrode_mask.shape, dtype=bool)
+    for region, point in ((terminal_a, point_a), (terminal_b, point_b)):
+        if point[0] >= 0:
+            region[point] = True
+    return terminal_a, terminal_b, classification, "point"
+
+
+def baseline_status(
+    electrode_mask: np.ndarray, terminal_a: np.ndarray, terminal_b: np.ndarray
+) -> str | None:
+    """Classify the particle-free state: None when both terminals are connected."""
+    if not (electrode_mask & terminal_a).any() or not (electrode_mask & terminal_b).any():
+        return TERMINAL_LOST
+    empty = np.zeros(electrode_mask.shape, dtype=bool)
+    if causes_open_regions(electrode_mask, empty, terminal_a, terminal_b):
+        return BASELINE_OPEN
+    return None
+
+
+def check_open_baselines(manifest: ProductManifest, masks: MaskSet) -> None:
+    """Nominal inputs must connect every open path's terminals before any particle lands."""
+    for index, open_path in enumerate(manifest.open_paths):
+        electrode_mask = masks.electrodes[open_path.electrode]
+        terminal_a, terminal_b, _classification, _kind = resolve_terminal_regions(
+            open_path, masks, electrode_mask, manifest.product_id
+        )
+        status = baseline_status(electrode_mask, terminal_a, terminal_b)
+        if status == TERMINAL_LOST:
+            raise InputContractError(
+                f"open_path '{open_path.path_id}'의 단자가 전극과 겹치지 않습니다",
+                product_id=manifest.product_id,
+                field=f"open_paths[{index}]",
+            )
+        if status == BASELINE_OPEN:
+            raise InputContractError(
+                f"open_path '{open_path.path_id}'의 두 단자가 이물 없이도 연결돼 있지 않습니다",
+                product_id=manifest.product_id,
+                field=f"open_paths[{index}]",
+            )
+
+
+def _first_point(region: np.ndarray) -> tuple[int, int]:
+    points = np.argwhere(region)
+    if points.size == 0:
+        return (-1, -1)
+    return int(points[0, 0]), int(points[0, 1])
+
+
+def _mask_bounds(mask: np.ndarray) -> tuple[int, int, int, int]:
+    """Return the tight non-empty mask bounds as half-open y/x coordinates."""
+    ys, xs = np.nonzero(mask)
+    if ys.size == 0:
+        raise ValueError("비어 있는 mask의 경계를 계산할 수 없습니다")
+    return int(ys.min()), int(ys.max()) + 1, int(xs.min()), int(xs.max()) + 1
 
 
 def _reach_footprint(grid: GridSpec, reach_um: float) -> np.ndarray:
@@ -162,13 +269,29 @@ def simulate_open(
     grid = masks.grid
     margin = manifest.contact_margin_um if contact_margin_um is None else contact_margin_um
     radius_um = diameter_um / 2.0
-    terminal_a, terminal_b, classification = resolve_terminals(
-        open_path, electrode_mask, manifest.product_id
+    terminal_a_region, terminal_b_region, classification, terminal_kind = (
+        resolve_terminal_regions(
+            open_path, masks, electrode_mask, manifest.product_id, require_on_electrode=False
+        )
     )
+    terminal_a = _first_point(terminal_a_region)
+    terminal_b = _first_point(terminal_b_region)
 
     failure = np.zeros(electrode_mask.shape, dtype=bool)
+    excluded = baseline_status(electrode_mask, terminal_a_region, terminal_b_region)
+    if excluded is not None:
+        return OpenResult(
+            path_id=open_path.path_id,
+            electrode=open_path.electrode,
+            failure=failure,
+            classification=excluded,
+            terminal_a_yx=terminal_a,
+            terminal_b_yx=terminal_b,
+            candidates=0,
+            terminal_kind=terminal_kind,
+        )
     candidates = open_candidates(
-        electrode_mask, grid, radius_um, margin, (terminal_a, terminal_b)
+        electrode_mask, grid, radius_um, margin
     )
     if not candidates.any():
         return OpenResult(
@@ -179,23 +302,41 @@ def simulate_open(
             terminal_a_yx=terminal_a,
             terminal_b_yx=terminal_b,
             candidates=0,
+            terminal_kind=terminal_kind,
         )
 
     stamp = particle_footprint(grid, radius_um, margin)
     half_y, half_x = stamp.shape[0] // 2, stamp.shape[1] // 2
     height, width = electrode_mask.shape
-    blocked = np.zeros(electrode_mask.shape, dtype=bool)
+    crop_y0, crop_y1, crop_x0, crop_x1 = _mask_bounds(electrode_mask)
+    cropped_electrode = electrode_mask[crop_y0:crop_y1, crop_x0:crop_x1]
+    cropped_terminal_a = terminal_a_region[crop_y0:crop_y1, crop_x0:crop_x1]
+    cropped_terminal_b = terminal_b_region[crop_y0:crop_y1, crop_x0:crop_x1]
+    blocked = np.zeros(cropped_electrode.shape, dtype=bool)
     ys, xs = np.nonzero(candidates)
     for y, x in zip(ys.tolist(), xs.tolist(), strict=True):
-        top, bottom = max(0, y - half_y), min(height, y + half_y + 1)
-        left, right = max(0, x - half_x), min(width, x + half_x + 1)
+        stamp_top, stamp_bottom = y - half_y, y + half_y + 1
+        stamp_left, stamp_right = x - half_x, x + half_x + 1
+        top = max(0, crop_y0, stamp_top)
+        bottom = min(height, crop_y1, stamp_bottom)
+        left = max(0, crop_x0, stamp_left)
+        right = min(width, crop_x1, stamp_right)
+        if top >= bottom or left >= right:
+            continue
         window = stamp[
-            top - (y - half_y) : stamp.shape[0] - ((y + half_y + 1) - bottom),
-            left - (x - half_x) : stamp.shape[1] - ((x + half_x + 1) - right),
+            top - stamp_top : bottom - stamp_top,
+            left - stamp_left : right - stamp_left,
         ]
-        blocked[top:bottom, left:right] = window
-        failure[y, x] = causes_open(electrode_mask, blocked, terminal_a, terminal_b)
-        blocked[top:bottom, left:right] = False
+        blocked_top, blocked_bottom = top - crop_y0, bottom - crop_y0
+        blocked_left, blocked_right = left - crop_x0, right - crop_x0
+        blocked[blocked_top:blocked_bottom, blocked_left:blocked_right] = window
+        failure[y, x] = causes_open_regions(
+            cropped_electrode,
+            blocked,
+            cropped_terminal_a,
+            cropped_terminal_b,
+        )
+        blocked[blocked_top:blocked_bottom, blocked_left:blocked_right] = False
     return OpenResult(
         path_id=open_path.path_id,
         electrode=open_path.electrode,
@@ -204,4 +345,5 @@ def simulate_open(
         terminal_a_yx=terminal_a,
         terminal_b_yx=terminal_b,
         candidates=int(candidates.sum()),
+        terminal_kind=terminal_kind,
     )

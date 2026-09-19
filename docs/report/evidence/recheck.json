@@ -1,0 +1,84 @@
+{
+  "zero_max_pixel_difference": 0.0,
+  "zero_union_max_pixel_difference": 0.0,
+  "repro_probability_bitwise_equal": true,
+  "repro_union_bitwise_equal": true,
+  "open_full_pixel_checks": [
+    {
+      "shape": "straight",
+      "pixel_y_um": 0.5,
+      "pixel_x_um": 0.5,
+      "diameter_um": 4,
+      "different_pixels": 0,
+      "hotspot_pixels": 168
+    },
+    {
+      "shape": "straight",
+      "pixel_y_um": 1.0,
+      "pixel_x_um": 0.5,
+      "diameter_um": 4,
+      "different_pixels": 0,
+      "hotspot_pixels": 76
+    },
+    {
+      "shape": "detour",
+      "pixel_y_um": 0.5,
+      "pixel_x_um": 0.5,
+      "diameter_um": 4,
+      "different_pixels": 0,
+      "hotspot_pixels": 140
+    },
+    {
+      "shape": "detour",
+      "pixel_y_um": 1.0,
+      "pixel_x_um": 0.5,
+      "diameter_um": 4,
+      "different_pixels": 0,
+      "hotspot_pixels": 60
+    },
+    {
+      "shape": "branch",
+      "pixel_y_um": 0.5,
+      "pixel_x_um": 0.5,
+      "diameter_um": 4,
+      "different_pixels": 0,
+      "hotspot_pixels": 167
+    },
+    {
+      "shape": "branch",
+      "pixel_y_um": 1.0,
+      "pixel_x_um": 0.5,
+      "diameter_um": 4,
+      "different_pixels": 0,
+      "hotspot_pixels": 75
+    },
+    {
+      "shape": "corner",
+      "pixel_y_um": 0.5,
+      "pixel_x_um": 0.5,
+      "diameter_um": 4,
+      "different_pixels": 0,
+      "hotspot_pixels": 202
+    },
+    {
+      "shape": "corner",
+      "pixel_y_um": 1.0,
+      "pixel_x_um": 0.5,
+      "diameter_um": 4,
+      "different_pixels": 0,
+      "hotspot_pixels": 130
+    }
+  ],
+  "run_output_bytes": 84456,
+  "prob_output_bytes": 84259,
+  "large-short_output_bytes": 3350274,
+  "legacy_totals": {
+    "particle_size_um": 90.0,
+    "n_diff": 0.0,
+    "only_in_reference": 0.0,
+    "only_in_candidate": 0.0,
+    "kernel_quantization": 0.0,
+    "kernel_shape": 0.0,
+    "unexplained": 0.0
+  }
+}

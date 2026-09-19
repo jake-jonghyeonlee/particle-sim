@@ -25,7 +25,22 @@ def load_manifest(path: Path) -> ProductManifest:
     if not isinstance(data, dict):
         raise InputContractError("manifest는 mapping이어야 합니다", file=str(path))
     try:
-        return ProductManifest.model_validate(data)
+        manifest = ProductManifest.model_validate(data)
+        if manifest.schema_version == "2.0":
+            from particle_sim.validation.electrode_pairs import unresolved_electrode_pairs
+
+            unresolved = unresolved_electrode_pairs(manifest)
+            if unresolved:
+                pairs = [f"{row.electrode_a}--{row.electrode_b}" for row in unresolved]
+                raise InputContractError(
+                    f"계산 또는 제외로 정하지 않은 전극 조합이 있습니다: {pairs}",
+                    product_id=manifest.product_id,
+                    file=str(path),
+                    field="electrode_pairs",
+                )
+        return manifest
+    except InputContractError:
+        raise
     except ValidationError as e:
         product_id: str | None = None
         if isinstance(data.get("product_id"), str):
@@ -62,6 +77,47 @@ def load_scenario_config(path: Path) -> ScenarioConfig:
             file=str(path),
             field=".".join(str(x) for x in first["loc"]),
         ) from e
+
+
+def validate_scenario_for_manifest(
+    scenario: ScenarioConfig, manifest: ProductManifest, *, scenario_path: Path
+) -> None:
+    """산포 항목이 실제 manifest layer에 적용되는지 fail-closed로 확인한다."""
+    stack_names = {layer.layer_name for layer in manifest.stack}
+    # contact·via mask는 hole_layer 이름으로 overlay·CD를 받는다
+    mask_names = {layer.layer_name for layer in manifest.layer_masks} | {
+        contact.hole_layer for contact in manifest.contacts
+    }
+    checks = (
+        ("overlay_um", set(scenario.overlay_um), mask_names),
+        ("cd_bias_um", set(scenario.cd_bias_um), mask_names),
+        ("thickness_delta_um", set(scenario.thickness_delta_um), stack_names),
+        ("planarization_factor", set(scenario.planarization_factor), stack_names),
+    )
+    for field, provided, allowed in checks:
+        unknown = sorted(provided - allowed)
+        if unknown:
+            raise InputContractError(
+                f"{field}에 manifest에 없는 layer가 있습니다: {unknown}",
+                product_id=manifest.product_id,
+                file=str(scenario_path),
+                field=field,
+            )
+    reference = scenario.overlay_reference_layer
+    if reference is not None and reference not in mask_names:
+        raise InputContractError(
+            f"overlay 기준 layer '{reference}'가 layer_masks에 없습니다",
+            product_id=manifest.product_id,
+            file=str(scenario_path),
+            field="overlay_reference_layer",
+        )
+    if reference is not None and reference in scenario.overlay_um:
+        raise InputContractError(
+            "overlay 기준 layer에는 이동 분포를 지정할 수 없습니다",
+            product_id=manifest.product_id,
+            file=str(scenario_path),
+            field="overlay_reference_layer",
+        )
 
 
 def resolve_input_path(

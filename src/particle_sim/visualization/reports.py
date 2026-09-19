@@ -279,7 +279,8 @@ def make_probability_report(run_dir: Path, manifest_path: Path) -> Path:
         f"- config_hash: `{run_manifest['config_hash']}`",
         f"- assumption_set: `{run_manifest['assumption_set']}`",
         f"- 시나리오 수: `{run_manifest.get('scenario_count')}` "
-        f"(Sobol m=`{run_manifest.get('sobol_exponent_m')}`, seed=`{run_manifest.get('random_seed')}`)",
+        f"(Sobol m=`{run_manifest.get('sobol_exponent_m')}`, "
+        f"seeds=`{run_manifest.get('random_seeds', [run_manifest.get('random_seed')])}`)",
         "",
         "## TODO_PHYSICS / 가정",
         "",
@@ -300,11 +301,14 @@ def make_probability_report(run_dir: Path, manifest_path: Path) -> Path:
     lines += ["", f"## 합집합 확률 CA (d={largest:g} um)", ""]
     union_rows = union[np.isclose(union["particle_size_um"].astype(float), largest)]
     lines += _table(
-        ["source_step", "failure_mode", "pair_ids", "ca_union_nominal_um2",
-         "ca_pair_sum_nominal_um2"],
+        ["source_step", "failure_mode", "failure_unit_ids", "ca_union_nominal_um2",
+         "ca_union_mean_um2", "ca_union_p05_um2", "ca_union_p95_um2",
+         "ca_raw_unit_sum_mean_um2"],
         [
-            [r.source_step, r.failure_mode, r.pair_ids, float(r.ca_union_nominal_um2),
-             float(r.ca_pair_sum_nominal_um2)]
+            [r.source_step, r.failure_mode, r.failure_unit_ids,
+             float(r.ca_union_nominal_um2), float(r.ca_union_mean_um2),
+             float(r.ca_union_p05_um2), float(r.ca_union_p95_um2),
+             float(r.ca_raw_unit_sum_mean_um2)]
             for r in union_rows.itertuples(index=False)
         ],
     )

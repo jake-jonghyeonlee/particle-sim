@@ -1,0 +1,64 @@
+{
+  "assumption_set": "nominal",
+  "config_hash": "9b39a0098ab07620c4beedfb0546de34dd6d84183a0b7d540a29da970c4e328a",
+  "convergence_tolerance": null,
+  "created_at": "2026-09-18T04:54:18.316358+00:00",
+  "design_version": "V01",
+  "git_commit": null,
+  "input_hashes": {
+    "manifest": "4dc389d4ecac09a7434c48136b0f6173a3024b946193d82af32c265c8b674a20",
+    "masks/electrode_A.png": "43a31e7a3c0207e74320f3f114cf3ec36748bf9154e0b5852f609ce03d5cdee7",
+    "masks/electrode_B.png": "07b8f37dfab64d1262f92332d81f613eed191aa3ebaa9ba828f8612e2bd76279",
+    "masks/electrode_G.png": "013e98431becf2acb6a81883b3aa188ff023891b84937cd6a43bb757d6b6292a",
+    "masks/electrode_P.png": "236e9048d5611894c4769a4c64eff3b1da85c0b8e064b239803c933b3896a285",
+    "masks/layer_M1.png": "013e98431becf2acb6a81883b3aa188ff023891b84937cd6a43bb757d6b6292a",
+    "masks/layer_M2.png": "ec7c40dad5aa4b60c7cba903ca000a029b953f476939e53c6005f0d2f4c462cf",
+    "masks/layer_M3.png": "236e9048d5611894c4769a4c64eff3b1da85c0b8e064b239803c933b3896a285",
+    "scenario": "5f53b8be3fb94e6dc441cde374860e693454367e1bd2f3840133f274cce00e8e"
+  },
+  "legacy_kernel": {
+    "iterations": "round",
+    "shape": "square",
+    "size": 5
+  },
+  "particle_sizes_um": [
+    2.0,
+    4.0,
+    6.0,
+    8.0,
+    10.0
+  ],
+  "post_step_policy": {
+    "coverage_break_factor": 1.5,
+    "mode": "protrusion"
+  },
+  "product_id": "SYN_PILOT",
+  "random_seed": 42,
+  "run_id": "20260918T045418Z_SYN_PILOT",
+  "scenario_count": 64,
+  "schema_version": "1.0",
+  "simulator_version": "0.1.0",
+  "sobol_exponent_m": 6,
+  "source_steps": [
+    "S_M1",
+    "S_M2",
+    "S_PLN"
+  ],
+  "units": {
+    "area": "um2",
+    "length": "um"
+  },
+  "value_semantics": "binary geometric contact risk (not failure probability)",
+  "warnings": [
+    "TODO_PHYSICS: particle_conductivity=conductive 이물은 전도성으로 가정합니다",
+    "TODO_PHYSICS: embedding_depth_um=0.0 매립 깊이는 미확정 물리값입니다",
+    "TODO_PHYSICS: contact_margin_um=0.0 접촉 여유값은 미확정 물리값입니다",
+    "TODO_PHYSICS: post_step_policy.mode=protrusion 이후 형성 layer 접촉 정책은 가정입니다",
+    "TODO_PHYSICS: electrode_z=nominal 전극 높이는 하부 topography와 무관한 평균값입니다",
+    "TODO_PHYSICS: post_step_policy.coverage_break_factor=1.5 절연막 피복 파괴 계수는 미확정 물리값입니다",
+    "TODO_PHYSICS: GI.planarization_factor=0.0 평탄화 계수는 미확정 물리값입니다",
+    "TODO_PHYSICS: PLN.planarization_factor=0.8 평탄화 계수는 미확정 물리값입니다",
+    "TODO_PHYSICS: scenario.assumption_set=nominal evidence=assumed 산포 입력의 근거입니다",
+    "TODO_PHYSICS: scenario.evidence=assumed 확률값은 가정한 산포에 조건부이며 실제 Fab 불량확률이 아닙니다"
+  ]
+}

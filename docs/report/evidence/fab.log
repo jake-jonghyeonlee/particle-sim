@@ -1,0 +1,13 @@
+{
+  "status": "ok",
+  "output": "docs/report/work/prob/fab_risk.parquet",
+  "rows": 90,
+  "modes": [
+    "common",
+    "actual"
+  ],
+  "expected_defect_count": {
+    "common": 0.00044160156250000005,
+    "actual": 0.0005445937499999999
+  }
+}

@@ -73,17 +73,33 @@ class OpenPath(BaseModel):
     electrode: str
     terminal_a_yx_px: tuple[int, int] | None = None
     terminal_b_yx_px: tuple[int, int] | None = None
+    terminal_a_mask_path: str | None = None
+    terminal_b_mask_path: str | None = None
+    applicable_particle_source_steps: list[str] = Field(default_factory=list)
     # skeleton_cut(중심선 절단 proxy)은 아직 구현하지 않아 스키마에서도 허용하지 않는다
     fallback: Literal["error", "roi_boundary"] = "error"
 
     @model_validator(mode="after")
     def _check_terminals(self) -> OpenPath:
-        given = (self.terminal_a_yx_px is None) + (self.terminal_b_yx_px is None)
-        if given == 1:
+        point_count = int(self.terminal_a_yx_px is not None) + int(
+            self.terminal_b_yx_px is not None
+        )
+        mask_count = int(self.terminal_a_mask_path is not None) + int(
+            self.terminal_b_mask_path is not None
+        )
+        if point_count == 1:
             raise ValueError(
                 f"open_path '{self.path_id}'의 단자는 둘 다 있거나 둘 다 없어야 합니다"
             )
-        if given == 2 and self.fallback == "error":
+        if mask_count == 1:
+            raise ValueError(
+                f"open_path '{self.path_id}'의 단자 mask는 둘 다 있거나 둘 다 없어야 합니다"
+            )
+        if point_count == 2 and mask_count == 2:
+            raise ValueError(
+                f"open_path '{self.path_id}'는 단자 좌표와 단자 mask를 함께 쓸 수 없습니다"
+            )
+        if point_count == 0 and mask_count == 0 and self.fallback == "error":
             raise ValueError(
                 f"open_path '{self.path_id}'에 단자가 없으면 fallback을 지정해야 합니다"
             )
@@ -94,6 +110,66 @@ class OpenPath(BaseModel):
             if terminal is not None and (terminal[0] < 0 or terminal[1] < 0):
                 raise ValueError(f"open_path '{self.path_id}'의 {name}는 0 이상이어야 합니다")
         return self
+
+
+AUTO_OPEN_PREFIX = "auto_open:"
+CNO_PREFIX = "cno:"
+RESERVED_UNIT_PREFIXES = (AUTO_OPEN_PREFIX, CNO_PREFIX)
+
+
+class Contact(BaseModel):
+    """contact·via 원본 mask. 각 연결 성분이 위·아래 도체 전극을 잇는 hole 하나다."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    contact_id: str = Field(min_length=1)
+    path: str
+    hole_layer: str
+    # 생략하면 stack process_order에서 hole_layer 바로 아래·위의 patterned 도체 layer를 쓴다
+    lower_layer: str | None = None
+    upper_layer: str | None = None
+    applicable_particle_source_steps: list[str] = Field(default_factory=list)
+
+
+def resolve_contact_layers(
+    stack: list[StackLayer], contact: Contact
+) -> tuple[str | None, str | None]:
+    """contact가 잇는 아래·위 도체 layer. 찾지 못하면 None."""
+    ordered = sorted(stack, key=lambda layer: layer.process_order)
+    names = [layer.layer_name for layer in ordered]
+    if contact.hole_layer not in names:
+        return contact.lower_layer, contact.upper_layer
+    hole_index = names.index(contact.hole_layer)
+
+    def is_conductor(layer: StackLayer) -> bool:
+        return layer.patterned and layer.material_type == "conductor"
+
+    lower = contact.lower_layer
+    if lower is None:
+        below = [layer for layer in ordered[:hole_index] if is_conductor(layer)]
+        lower = below[-1].layer_name if below else None
+    upper = contact.upper_layer
+    if upper is None:
+        above = [layer for layer in ordered[hole_index + 1 :] if is_conductor(layer)]
+        upper = above[0].layer_name if above else None
+    return lower, upper
+
+
+class ExcludedElectrodePair(BaseModel):
+    """계산에서 제외하기로 승인한 다른 net 전극 조합."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    electrode_a: str
+    electrode_b: str
+    reason: str = Field(min_length=1)
+
+    @field_validator("reason")
+    @classmethod
+    def _reason_not_blank(cls, value: str) -> str:
+        if not value.strip():
+            raise ValueError("제외 전극 조합의 reason은 공백일 수 없습니다")
+        return value
 
 
 class ElectrodePair(BaseModel):
@@ -135,7 +211,7 @@ class PostStepPolicy(BaseModel):
 class ProductManifest(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
 
-    schema_version: Literal["1.0"]
+    schema_version: Literal["1.0", "2.0"]
     product_id: str
     product_family: str
     design_version: str
@@ -148,7 +224,11 @@ class ProductManifest(BaseModel):
     electrodes: list[Electrode]
     particle_source_steps: list[ParticleSourceStep]
     electrode_pairs: list[ElectrodePair]
+    excluded_electrode_pairs: list[ExcludedElectrodePair] = Field(default_factory=list)
     open_paths: list[OpenPath] = Field(default_factory=list)
+    contacts: list[Contact] = Field(default_factory=list)
+    # contact·ROI 경계 자동 단자 open을 계산할 layer와 적용 이물 유입 공정
+    open_applicable_steps_by_layer: dict[str, list[str]] = Field(default_factory=dict)
     particle_sizes_um: list[float] = Field(default_factory=lambda: list(PARTICLE_SIZES_UM))
     embedding_depth_um: float = Field(ge=0)
     contact_margin_um: float
@@ -243,6 +323,35 @@ class ProductManifest(BaseModel):
                     f"vertical_short pair '{pair.pair_id}'은(는) 다른 layer_name이어야 합니다"
                 )
 
+        declared_keys: set[tuple[str, str]] = set()
+        for pair in self.electrode_pairs:
+            key = tuple(sorted((pair.electrode_a, pair.electrode_b)))
+            if key in declared_keys:
+                raise ValueError(f"전극 조합 {key}이(가) 다른 pair_id로 중복 선언됐습니다")
+            declared_keys.add(key)
+        excluded_keys: set[tuple[str, str]] = set()
+        for excluded in self.excluded_electrode_pairs:
+            if excluded.electrode_a not in electrode_by_id:
+                raise ValueError(
+                    f"제외 조합의 electrode_a '{excluded.electrode_a}'이(가) 존재하지 않습니다"
+                )
+            if excluded.electrode_b not in electrode_by_id:
+                raise ValueError(
+                    f"제외 조합의 electrode_b '{excluded.electrode_b}'이(가) 존재하지 않습니다"
+                )
+            if excluded.electrode_a == excluded.electrode_b:
+                raise ValueError("제외 조합의 두 전극은 달라야 합니다")
+            ea = electrode_by_id[excluded.electrode_a]
+            eb = electrode_by_id[excluded.electrode_b]
+            if ea.net_id == eb.net_id:
+                raise ValueError("같은 net 전극은 제외 조합에 넣지 않습니다")
+            key = tuple(sorted((excluded.electrode_a, excluded.electrode_b)))
+            if key in excluded_keys:
+                raise ValueError(f"제외 전극 조합 {key}이(가) 중복됩니다")
+            if key in declared_keys:
+                raise ValueError(f"전극 조합 {key}이(가) 계산과 제외에 동시에 선언됐습니다")
+            excluded_keys.add(key)
+
         self._check_unique("open_paths", "path_id", [o.path_id for o in self.open_paths])
         for open_path in self.open_paths:
             if open_path.electrode not in electrode_by_id:
@@ -250,6 +359,28 @@ class ProductManifest(BaseModel):
                     f"open_path '{open_path.path_id}'의 전극 "
                     f"'{open_path.electrode}'이(가) 존재하지 않습니다"
                 )
+            unknown_steps = sorted(
+                set(open_path.applicable_particle_source_steps)
+                - {step.step_id for step in self.particle_source_steps}
+            )
+            if unknown_steps:
+                raise ValueError(
+                    f"open_path '{open_path.path_id}'의 적용 이물 유입 공정이 존재하지 않습니다: "
+                    f"{unknown_steps}"
+                )
+            if self.schema_version == "2.0" and not open_path.applicable_particle_source_steps:
+                raise ValueError(
+                    f"schema 2.0 open_path '{open_path.path_id}'에는 "
+                    "applicable_particle_source_steps가 필요합니다"
+                )
+            if len(open_path.applicable_particle_source_steps) != len(
+                set(open_path.applicable_particle_source_steps)
+            ):
+                raise ValueError(
+                    f"open_path '{open_path.path_id}'의 적용 이물 유입 공정이 중복됩니다"
+                )
+
+        self._check_contacts(stack_by_name)
 
         for step in self.particle_source_steps:
             if step.surface_model != "partial":
@@ -276,6 +407,76 @@ class ProductManifest(BaseModel):
 
         return self
 
+    def _check_contacts(self, stack_by_name: dict[str, StackLayer]) -> None:
+        unit_ids = [p.pair_id for p in self.electrode_pairs] + [
+            o.path_id for o in self.open_paths
+        ]
+        for unit_id in unit_ids:
+            if unit_id.startswith(RESERVED_UNIT_PREFIXES):
+                raise ValueError(
+                    f"불량 단위 ID '{unit_id}'은(는) 예약 접두사 {RESERVED_UNIT_PREFIXES}를 "
+                    "쓸 수 없습니다"
+                )
+        if (self.contacts or self.open_applicable_steps_by_layer) and self.schema_version != "2.0":
+            raise ValueError("contacts와 open_applicable_steps_by_layer는 schema 2.0에서만 씁니다")
+        step_ids = {step.step_id for step in self.particle_source_steps}
+        electrode_layers = {e.layer_name for e in self.electrodes}
+        self._check_unique("contacts", "contact_id", [c.contact_id for c in self.contacts])
+        contact_layers: set[str] = set()
+        for contact in self.contacts:
+            name = f"contact '{contact.contact_id}'"
+            if ":" in contact.contact_id or "__" in contact.contact_id:
+                raise ValueError(f"{name}의 contact_id에는 ':'와 '__'를 쓸 수 없습니다")
+            hole = stack_by_name.get(contact.hole_layer)
+            if hole is None:
+                raise ValueError(f"{name}의 hole_layer '{contact.hole_layer}'이(가) stack에 없습니다")
+            if hole.material_type == "conductor":
+                raise ValueError(f"{name}의 hole_layer는 절연층이어야 합니다")
+            lower, upper = resolve_contact_layers(self.stack, contact)
+            for side, layer_name in (("lower_layer", lower), ("upper_layer", upper)):
+                if layer_name is None:
+                    raise ValueError(f"{name}의 {side}를 stack에서 찾을 수 없습니다")
+                layer = stack_by_name.get(layer_name)
+                if layer is None or not (layer.patterned and layer.material_type == "conductor"):
+                    raise ValueError(
+                        f"{name}의 {side} '{layer_name}'은(는) patterned 도체 layer여야 합니다"
+                    )
+                if layer_name not in electrode_layers:
+                    raise ValueError(f"{name}의 {side} '{layer_name}'에 전극이 없습니다")
+            assert lower is not None and upper is not None
+            order = stack_by_name[contact.hole_layer].process_order
+            if not stack_by_name[lower].process_order < order < stack_by_name[upper].process_order:
+                raise ValueError(f"{name}의 hole_layer는 lower_layer와 upper_layer 사이여야 합니다")
+            if not contact.applicable_particle_source_steps:
+                raise ValueError(f"{name}에는 applicable_particle_source_steps가 필요합니다")
+            unknown = sorted(set(contact.applicable_particle_source_steps) - step_ids)
+            if unknown:
+                raise ValueError(f"{name}의 적용 이물 유입 공정이 존재하지 않습니다: {unknown}")
+            if len(set(contact.applicable_particle_source_steps)) != len(
+                contact.applicable_particle_source_steps
+            ):
+                raise ValueError(f"{name}의 적용 이물 유입 공정이 중복됩니다")
+            contact_layers.update((lower, upper))
+        for layer_name, steps in self.open_applicable_steps_by_layer.items():
+            if layer_name not in electrode_layers:
+                raise ValueError(
+                    f"open_applicable_steps_by_layer의 '{layer_name}'은(는) 전극이 있는 layer여야 합니다"
+                )
+            unknown = sorted(set(steps) - step_ids)
+            if unknown:
+                raise ValueError(
+                    f"open_applicable_steps_by_layer['{layer_name}']의 공정이 존재하지 않습니다: "
+                    f"{unknown}"
+                )
+            if len(set(steps)) != len(steps):
+                raise ValueError(f"open_applicable_steps_by_layer['{layer_name}']가 중복됩니다")
+        missing = sorted(contact_layers - set(self.open_applicable_steps_by_layer))
+        if missing:
+            raise ValueError(
+                "contact로 이어진 layer는 open_applicable_steps_by_layer에 선언해야 합니다"
+                f"(자동 open을 계산하지 않으면 빈 목록): {missing}"
+            )
+
     @staticmethod
     def _check_unique(section: str, key: str, values: list[object]) -> None:
         seen: set[object] = set()
@@ -292,6 +493,21 @@ class NormalSpec(BaseModel):
 
     mean: float = 0.0
     sigma: float = Field(ge=0.0)
+    evidence: Literal["measured", "assumed"] | None = None
+    source_id: str | None = None
+    source_hash: str | None = None
+    measurement_period: str | None = None
+    fab_process: str | None = None
+    product_family: str | None = None
+
+
+class OverlayXYSpec(BaseModel):
+    """x/y가 서로 다른 overlay 분포."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    x: NormalSpec
+    y: NormalSpec
 
 
 class UniformSpec(BaseModel):
@@ -314,12 +530,15 @@ class ScenarioConfig(BaseModel):
 
     model_config = ConfigDict(extra="forbid", frozen=True)
 
-    schema_version: Literal["1.0"]
+    schema_version: Literal["1.0", "2.0"]
     assumption_set: str
     evidence: Literal["measured", "assumed"]
     thickness_delta_um: dict[str, NormalSpec] = Field(default_factory=dict)
-    overlay_um: dict[str, NormalSpec] = Field(default_factory=dict)
+    overlay_um: dict[str, NormalSpec | OverlayXYSpec] = Field(default_factory=dict)
     cd_bias_um: dict[str, NormalSpec] = Field(default_factory=dict)
+    overlay_reference_layer: str | None = None
+    overlay_sign_convention: Literal["positive_x_right_positive_y_down"] | None = None
+    independence_model: Literal["independent"] = "independent"
     particle_diameter_delta_um: NormalSpec | None = None
     center_offset_um: NormalSpec | None = None
     embedding_depth_um: UniformSpec | None = None
@@ -328,11 +547,13 @@ class ScenarioConfig(BaseModel):
 
     def is_degenerate(self) -> bool:
         """산포가 모두 0이면 True(평균이 0이 아닌 고정 이동은 산포가 아니므로 허용한다)."""
-        normals = [
-            *self.thickness_delta_um.values(),
-            *self.overlay_um.values(),
-            *self.cd_bias_um.values(),
-        ]
+        overlay_normals = []
+        for spec in self.overlay_um.values():
+            if isinstance(spec, OverlayXYSpec):
+                overlay_normals.extend((spec.x, spec.y))
+            else:
+                overlay_normals.extend((spec, spec))
+        normals = [*self.thickness_delta_um.values(), *overlay_normals, *self.cd_bias_um.values()]
         for spec in (self.particle_diameter_delta_um, self.center_offset_um):
             if spec is not None:
                 normals.append(spec)
@@ -343,6 +564,37 @@ class ScenarioConfig(BaseModel):
             if spec is not None:
                 uniforms.append(spec)
         return all(spec.low == spec.high for spec in uniforms)
+
+    @model_validator(mode="after")
+    def _check_v2_overlay_contract(self) -> ScenarioConfig:
+        if self.schema_version != "2.0":
+            return self
+        legacy_layers = [
+            layer for layer, spec in self.overlay_um.items() if isinstance(spec, NormalSpec)
+        ]
+        if legacy_layers:
+            raise ValueError(
+                f"schema 2.0 overlay는 x/y 분포를 각각 지정해야 합니다: {legacy_layers}"
+            )
+        if self.overlay_um and self.overlay_reference_layer is None:
+            raise ValueError("schema 2.0 overlay에는 overlay_reference_layer가 필요합니다")
+        if self.overlay_um and self.overlay_sign_convention is None:
+            raise ValueError("schema 2.0 overlay에는 overlay_sign_convention이 필요합니다")
+        measured_specs: list[tuple[str, NormalSpec]] = []
+        for layer, spec in self.overlay_um.items():
+            assert isinstance(spec, OverlayXYSpec)
+            measured_specs.extend(((f"overlay_um.{layer}.x", spec.x), (f"overlay_um.{layer}.y", spec.y)))
+        measured_specs.extend(
+            (f"cd_bias_um.{layer}", spec) for layer, spec in self.cd_bias_um.items()
+        )
+        for name, spec in measured_specs:
+            if spec.evidence is None:
+                raise ValueError(f"schema 2.0 {name}에는 evidence가 필요합니다")
+            if spec.evidence == "measured" and spec.source_id is None:
+                raise ValueError(f"실측 {name}에는 source_id가 필요합니다")
+            if spec.source_id is not None and not spec.source_id.strip():
+                raise ValueError(f"{name}의 source_id는 공백일 수 없습니다")
+        return self
 
 
 def scenario_warnings(config: ScenarioConfig) -> list[str]:
@@ -369,6 +621,22 @@ def todo_physics_warnings(m: ProductManifest) -> list[str]:
         f"TODO_PHYSICS: post_step_policy.mode={policy.mode} 이후 형성 layer 접촉 정책은 가정입니다",
         "TODO_PHYSICS: electrode_z=nominal 전극 높이는 하부 topography와 무관한 평균값입니다",
     ]
+    if m.contacts:
+        warnings.append(
+            "TODO_PHYSICS: CNO는 contact hole 전체가 가려질 때만 불량으로 보고, 같은 전극을 잇는 "
+            "hole 중 하나라도 막히면 불량으로 보는 잠정 기준입니다(일부 가림·병렬 hole 기준 미확정)"
+        )
+    if any(m.open_applicable_steps_by_layer.values()):
+        warnings.append(
+            "TODO_PHYSICS: 자동 단자 open은 전극 단위 판정이며 같은 net의 다른 layer 우회 경로는 "
+            "반영하지 않습니다"
+        )
+    for open_path in m.open_paths:
+        if not open_path.applicable_particle_source_steps:
+            warnings.append(
+                f"TODO_PHYSICS: open_path={open_path.path_id}의 적용 이물 유입 공정이 없어 "
+                "v1 호환 동작으로 모든 공정에 계산합니다"
+            )
     if policy.coverage_break_factor is not None:
         warnings.append(
             f"TODO_PHYSICS: post_step_policy.coverage_break_factor={policy.coverage_break_factor} "

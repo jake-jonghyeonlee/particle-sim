@@ -11,6 +11,7 @@ from PIL import Image
 
 from particle_sim.config import file_sha256, resolve_input_path
 from particle_sim.errors import InputContractError
+from particle_sim.geometry.contacts import ContactTopology, build_contact_topology
 from particle_sim.schema import ProductManifest
 
 
@@ -47,6 +48,10 @@ class MaskSet:
     layers: dict[str, np.ndarray]
     electrodes: dict[str, np.ndarray]
     input_hashes: dict[str, str]
+    terminal_regions: dict[str, tuple[np.ndarray, np.ndarray]] | None = None
+    layer_unassigned_pixels: dict[str, int] | None = None
+    contact_masks: dict[str, np.ndarray] | None = None
+    contact_topology: ContactTopology | None = None
 
 
 def load_binary_mask(path: Path, *, product_id: str, field: str) -> np.ndarray:
@@ -130,6 +135,26 @@ def load_product_masks(manifest: ProductManifest, manifest_path: Path) -> MaskSe
         entries.append((lm.path, f"layer_masks[{index}].path", "layer"))
     for index, el in enumerate(manifest.electrodes):
         entries.append((el.path, f"electrodes[{index}].path", "electrode"))
+    for index, open_path in enumerate(manifest.open_paths):
+        if open_path.terminal_a_mask_path is not None:
+            entries.append(
+                (
+                    open_path.terminal_a_mask_path,
+                    f"open_paths[{index}].terminal_a_mask_path",
+                    "terminal",
+                )
+            )
+        if open_path.terminal_b_mask_path is not None:
+            entries.append(
+                (
+                    open_path.terminal_b_mask_path,
+                    f"open_paths[{index}].terminal_b_mask_path",
+                    "terminal",
+                )
+            )
+
+    for index, contact in enumerate(manifest.contacts):
+        entries.append((contact.path, f"contacts[{index}].path", "contact"))
 
     if not entries:
         raise InputContractError(
@@ -239,7 +264,8 @@ def load_product_masks(manifest: ProductManifest, manifest_path: Path) -> MaskSe
                 )
             accumulated |= em
 
-    # 5. 레이어 합집합 일치 검증
+    # 5. 전극은 layer의 부분집합이어야 하며 남는 layer 영역은 허용한다.
+    layer_unassigned_pixels: dict[str, int] = {}
     for lname, lmask in layers.items():
         eids = layer_electrodes.get(lname, [])
         if not eids:
@@ -247,15 +273,57 @@ def load_product_masks(manifest: ProductManifest, manifest_path: Path) -> MaskSe
         union = np.zeros(shape, dtype=bool)
         for eid in eids:
             union |= electrodes[eid]
-        missing = int(np.sum(lmask & ~union))  # layer에 있지만 union에 없음
         extra = int(np.sum(union & ~lmask))  # union에 있지만 layer에 없음
-        if missing or extra:
+        if extra:
             raise InputContractError(
-                f"레이어 '{lname}' 합집합 불일치: missing={missing}, extra={extra}",
+                f"레이어 '{lname}' 밖에 전극이 있습니다: extra={extra}",
                 product_id=product_id,
                 file=str(manifest_path),
                 field=f"layer_masks[{layer_index[lname]}].path",
             )
+        layer_unassigned_pixels[lname] = int(np.sum(lmask & ~union))
+
+    # 6. open 단자 영역 검증
+    terminal_regions: dict[str, tuple[np.ndarray, np.ndarray]] = {}
+    for index, open_path in enumerate(manifest.open_paths):
+        if open_path.terminal_a_mask_path is None:
+            continue
+        assert open_path.terminal_b_mask_path is not None
+        terminal_a = masks[open_path.terminal_a_mask_path]
+        terminal_b = masks[open_path.terminal_b_mask_path]
+        electrode = electrodes[open_path.electrode]
+        for side, terminal in (("a", terminal_a), ("b", terminal_b)):
+            if not terminal.any():
+                raise InputContractError(
+                    f"open_path '{open_path.path_id}'의 terminal_{side} mask가 비어 있습니다",
+                    product_id=product_id,
+                    file=str(manifest_path),
+                    field=f"open_paths[{index}].terminal_{side}_mask_path",
+                )
+            outside = int(np.sum(terminal & ~electrode))
+            if outside:
+                raise InputContractError(
+                    f"open_path '{open_path.path_id}'의 terminal_{side} mask가 "
+                    f"전극 밖으로 {outside}픽셀 나갑니다",
+                    product_id=product_id,
+                    file=str(manifest_path),
+                    field=f"open_paths[{index}].terminal_{side}_mask_path",
+                )
+        overlap = int(np.sum(terminal_a & terminal_b))
+        if overlap:
+            raise InputContractError(
+                f"open_path '{open_path.path_id}'의 두 단자 mask가 {overlap}픽셀 겹칩니다",
+                product_id=product_id,
+                file=str(manifest_path),
+                field=f"open_paths[{index}]",
+            )
+        terminal_regions[open_path.path_id] = (terminal_a, terminal_b)
+
+    # 7. contact·via hole이 같은 net의 아래·위 전극을 잇는지 검증
+    contact_masks = {contact.contact_id: masks[contact.path] for contact in manifest.contacts}
+    contact_topology = build_contact_topology(
+        manifest, contact_masks, electrodes, strict=True, manifest_path=str(manifest_path)
+    )
 
     grid = GridSpec(
         shape_yx=(shape_y, shape_x),
@@ -269,4 +337,8 @@ def load_product_masks(manifest: ProductManifest, manifest_path: Path) -> MaskSe
         layers=layers,
         electrodes=electrodes,
         input_hashes=input_hashes,
+        terminal_regions=terminal_regions,
+        layer_unassigned_pixels=layer_unassigned_pixels,
+        contact_masks=contact_masks,
+        contact_topology=contact_topology,
     )

@@ -1,0 +1,23 @@
+[
+  {
+    "diameter_um": 2.0,
+    "n_diff": 3,
+    "kernel_quantization": 0,
+    "kernel_shape": 3,
+    "unexplained": 0
+  },
+  {
+    "diameter_um": 3.0,
+    "n_diff": 30,
+    "kernel_quantization": 10,
+    "kernel_shape": 20,
+    "unexplained": 0
+  },
+  {
+    "diameter_um": 4.0,
+    "n_diff": 20,
+    "kernel_quantization": 0,
+    "kernel_shape": 20,
+    "unexplained": 0
+  }
+]

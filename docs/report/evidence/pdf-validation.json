@@ -1,0 +1,166 @@
+{
+  "pages": 17,
+  "images": [
+    {
+      "src": "figures/explainer_layout_3d.png",
+      "loaded": true
+    },
+    {
+      "src": "figures/explainer_contact.png",
+      "loaded": true
+    },
+    {
+      "src": "figures/explainer_open.png",
+      "loaded": true
+    },
+    {
+      "src": "figures/explainer_probability_profile.png",
+      "loaded": true
+    },
+    {
+      "src": "figures/probability_fab_comparison.png",
+      "loaded": true
+    },
+    {
+      "src": "figures/nominal_ca_curve_S_M1.png",
+      "loaded": true
+    },
+    {
+      "src": "figures/triple_union_vs_sum_S_M2.png",
+      "loaded": true
+    },
+    {
+      "src": "figures/complex_layout_overlay.png",
+      "loaded": true
+    },
+    {
+      "src": "figures/complex_pair_S_M1_G2__D3_d10.png",
+      "loaded": true
+    },
+    {
+      "src": "figures/complex_performance.png",
+      "loaded": true
+    }
+  ],
+  "layout": [
+    {
+      "page": 1,
+      "footer_clearance_px": 302.609375,
+      "horizontal_overflow": [],
+      "missing_text_characters": 0,
+      "pdf_images": 0
+    },
+    {
+      "page": 2,
+      "footer_clearance_px": 379.34375,
+      "horizontal_overflow": [],
+      "missing_text_characters": 0,
+      "pdf_images": 0
+    },
+    {
+      "page": 3,
+      "footer_clearance_px": 210.734375,
+      "horizontal_overflow": [],
+      "missing_text_characters": 0,
+      "pdf_images": 1
+    },
+    {
+      "page": 4,
+      "footer_clearance_px": 188.0625,
+      "horizontal_overflow": [],
+      "missing_text_characters": 0,
+      "pdf_images": 1
+    },
+    {
+      "page": 5,
+      "footer_clearance_px": 165.0625,
+      "horizontal_overflow": [],
+      "missing_text_characters": 0,
+      "pdf_images": 1
+    },
+    {
+      "page": 6,
+      "footer_clearance_px": 258.21875,
+      "horizontal_overflow": [],
+      "missing_text_characters": 0,
+      "pdf_images": 1
+    },
+    {
+      "page": 7,
+      "footer_clearance_px": 154.546875,
+      "horizontal_overflow": [],
+      "missing_text_characters": 0,
+      "pdf_images": 1
+    },
+    {
+      "page": 8,
+      "footer_clearance_px": 330.890625,
+      "horizontal_overflow": [],
+      "missing_text_characters": 0,
+      "pdf_images": 0
+    },
+    {
+      "page": 9,
+      "footer_clearance_px": 180.546875,
+      "horizontal_overflow": [],
+      "missing_text_characters": 0,
+      "pdf_images": 2
+    },
+    {
+      "page": 10,
+      "footer_clearance_px": 172.390625,
+      "horizontal_overflow": [],
+      "missing_text_characters": 0,
+      "pdf_images": 2
+    },
+    {
+      "page": 11,
+      "footer_clearance_px": 280.625,
+      "horizontal_overflow": [],
+      "missing_text_characters": 0,
+      "pdf_images": 1
+    },
+    {
+      "page": 12,
+      "footer_clearance_px": 313.21875,
+      "horizontal_overflow": [],
+      "missing_text_characters": 0,
+      "pdf_images": 0
+    },
+    {
+      "page": 13,
+      "footer_clearance_px": 355.953125,
+      "horizontal_overflow": [],
+      "missing_text_characters": 0,
+      "pdf_images": 0
+    },
+    {
+      "page": 14,
+      "footer_clearance_px": 379.6875,
+      "horizontal_overflow": [],
+      "missing_text_characters": 0,
+      "pdf_images": 0
+    },
+    {
+      "page": 15,
+      "footer_clearance_px": 255.6875,
+      "horizontal_overflow": [],
+      "missing_text_characters": 0,
+      "pdf_images": 0
+    },
+    {
+      "page": 16,
+      "footer_clearance_px": 222.5,
+      "horizontal_overflow": [],
+      "missing_text_characters": 0,
+      "pdf_images": 0
+    },
+    {
+      "page": 17,
+      "footer_clearance_px": 306.15625,
+      "horizontal_overflow": [],
+      "missing_text_characters": 0,
+      "pdf_images": 0
+    }
+  ]
+}

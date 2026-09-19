@@ -1,0 +1,31 @@
+# 형식 설명용 예제다. 숫자를 실제 제품값으로 사용하지 않는다.
+schema_version: "2.0"
+assumption_set: replace-with-measurement-set-id
+evidence: measured
+overlay_reference_layer: mask1
+overlay_sign_convention: positive_x_right_positive_y_down
+independence_model: independent
+
+overlay_um:
+  mask2:
+    x:
+      mean: 0.0
+      sigma: 0.15
+      evidence: measured
+      source_id: replace-with-overlay-x-source
+      measurement_period: replace-with-period
+    y:
+      mean: 0.0
+      sigma: 0.18
+      evidence: measured
+      source_id: replace-with-overlay-y-source
+      measurement_period: replace-with-period
+
+# cd_bias_um은 전체 선폭 변화가 아니라 한쪽 경계 이동량이다.
+cd_bias_um:
+  mask2:
+    mean: 0.0
+    sigma: 0.05
+    evidence: measured
+    source_id: replace-with-cd-source
+    measurement_period: replace-with-period

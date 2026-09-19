@@ -1,0 +1,151 @@
+{
+  "label": "complex-200",
+  "manifest": "/Users/jonghyeonlee/git/particle-sim/docs/report/work/complex-case/manifest.yaml",
+  "manifest_sha256": "13ae3d3116945e52b2746cb80e272bebb7715b92a2d8062b9fefa5070f9ebfff",
+  "python": "3.12.13 (main, Mar  3 2026, 12:39:30) [Clang 21.0.0 (clang-2100.0.123.102)]",
+  "platform": "macOS-26.5.2-arm64-arm-64bit",
+  "warmup": {
+    "wall_seconds": 2.2618656249251217,
+    "peak_rss_bytes": 214712320,
+    "output_bytes": 13995272,
+    "config_hash": "3072ead94c8f3d4f5c77b5a3e6362e1f721af0d21de5db15f1ef4e5f9a06cf23",
+    "input_hashes": {
+      "manifest": "13ae3d3116945e52b2746cb80e272bebb7715b92a2d8062b9fefa5070f9ebfff",
+      "masks/electrode_D1.png": "e03fd41360029f7b92c9f1be612a370cf9bc688b02f7ff7a6e393988476437f5",
+      "masks/electrode_D2.png": "cb95d01852156fafb69198b8d1bb8262c1c4c7cb0a8b57db496d1cac17e450bd",
+      "masks/electrode_D3.png": "851c1845432fb14d848634df7e19d35bbf379eecc46a995b9df95defcacb2ce4",
+      "masks/electrode_D4.png": "2598a09b44fc10b927484c5135ad390eae080b6ca7640e7091ac9c1e5cf11ed3",
+      "masks/electrode_G1.png": "52a67c97176b60ea5eb656b6a1145b835a4a368ce422e001314ac58e6e5b11d9",
+      "masks/electrode_G2.png": "4f93b296209966ce65c37391e7f98adfede4437245d1d280a4cc36db28c3b2a1",
+      "masks/electrode_G3.png": "23bbb0e4711d95e98f24e41650e9524dd06e0aaac116f59ad6b80e51a0b9f94c",
+      "masks/electrode_P1.png": "67c9f203eb447603dac449900c55cfa8282869e2539089903a07b5e27cacae21",
+      "masks/electrode_P2.png": "7e1c1ade09144ca9415d3a2db52b47dcb262ea181e9857b165aa077e5070b823",
+      "masks/electrode_P3.png": "02317ac942583b934c2d3bdcdf5fcb864d4ae2ffdac05d543e4e19945bc83df3",
+      "masks/layer_M1.png": "608b06e03255ca4b084161478fb4bb231b0f4954b1741c0206bbbb3cfac7d8ba",
+      "masks/layer_M2.png": "1ac8cd36d155a8156e238db338f4d3c539af3cc25b933debcab7c2087462fa79",
+      "masks/layer_M3.png": "f5b698ac9a5b7b4ca2fa3963677b57e110a1f2f3b9a4c4c10f8dc5639a8901de"
+    }
+  },
+  "runs": [
+    {
+      "wall_seconds": 2.2526434999890625,
+      "peak_rss_bytes": 211419136,
+      "output_bytes": 13995272,
+      "config_hash": "3072ead94c8f3d4f5c77b5a3e6362e1f721af0d21de5db15f1ef4e5f9a06cf23",
+      "input_hashes": {
+        "manifest": "13ae3d3116945e52b2746cb80e272bebb7715b92a2d8062b9fefa5070f9ebfff",
+        "masks/electrode_D1.png": "e03fd41360029f7b92c9f1be612a370cf9bc688b02f7ff7a6e393988476437f5",
+        "masks/electrode_D2.png": "cb95d01852156fafb69198b8d1bb8262c1c4c7cb0a8b57db496d1cac17e450bd",
+        "masks/electrode_D3.png": "851c1845432fb14d848634df7e19d35bbf379eecc46a995b9df95defcacb2ce4",
+        "masks/electrode_D4.png": "2598a09b44fc10b927484c5135ad390eae080b6ca7640e7091ac9c1e5cf11ed3",
+        "masks/electrode_G1.png": "52a67c97176b60ea5eb656b6a1145b835a4a368ce422e001314ac58e6e5b11d9",
+        "masks/electrode_G2.png": "4f93b296209966ce65c37391e7f98adfede4437245d1d280a4cc36db28c3b2a1",
+        "masks/electrode_G3.png": "23bbb0e4711d95e98f24e41650e9524dd06e0aaac116f59ad6b80e51a0b9f94c",
+        "masks/electrode_P1.png": "67c9f203eb447603dac449900c55cfa8282869e2539089903a07b5e27cacae21",
+        "masks/electrode_P2.png": "7e1c1ade09144ca9415d3a2db52b47dcb262ea181e9857b165aa077e5070b823",
+        "masks/electrode_P3.png": "02317ac942583b934c2d3bdcdf5fcb864d4ae2ffdac05d543e4e19945bc83df3",
+        "masks/layer_M1.png": "608b06e03255ca4b084161478fb4bb231b0f4954b1741c0206bbbb3cfac7d8ba",
+        "masks/layer_M2.png": "1ac8cd36d155a8156e238db338f4d3c539af3cc25b933debcab7c2087462fa79",
+        "masks/layer_M3.png": "f5b698ac9a5b7b4ca2fa3963677b57e110a1f2f3b9a4c4c10f8dc5639a8901de"
+      }
+    },
+    {
+      "wall_seconds": 2.2133739579003304,
+      "peak_rss_bytes": 213073920,
+      "output_bytes": 13995272,
+      "config_hash": "3072ead94c8f3d4f5c77b5a3e6362e1f721af0d21de5db15f1ef4e5f9a06cf23",
+      "input_hashes": {
+        "manifest": "13ae3d3116945e52b2746cb80e272bebb7715b92a2d8062b9fefa5070f9ebfff",
+        "masks/electrode_D1.png": "e03fd41360029f7b92c9f1be612a370cf9bc688b02f7ff7a6e393988476437f5",
+        "masks/electrode_D2.png": "cb95d01852156fafb69198b8d1bb8262c1c4c7cb0a8b57db496d1cac17e450bd",
+        "masks/electrode_D3.png": "851c1845432fb14d848634df7e19d35bbf379eecc46a995b9df95defcacb2ce4",
+        "masks/electrode_D4.png": "2598a09b44fc10b927484c5135ad390eae080b6ca7640e7091ac9c1e5cf11ed3",
+        "masks/electrode_G1.png": "52a67c97176b60ea5eb656b6a1145b835a4a368ce422e001314ac58e6e5b11d9",
+        "masks/electrode_G2.png": "4f93b296209966ce65c37391e7f98adfede4437245d1d280a4cc36db28c3b2a1",
+        "masks/electrode_G3.png": "23bbb0e4711d95e98f24e41650e9524dd06e0aaac116f59ad6b80e51a0b9f94c",
+        "masks/electrode_P1.png": "67c9f203eb447603dac449900c55cfa8282869e2539089903a07b5e27cacae21",
+        "masks/electrode_P2.png": "7e1c1ade09144ca9415d3a2db52b47dcb262ea181e9857b165aa077e5070b823",
+        "masks/electrode_P3.png": "02317ac942583b934c2d3bdcdf5fcb864d4ae2ffdac05d543e4e19945bc83df3",
+        "masks/layer_M1.png": "608b06e03255ca4b084161478fb4bb231b0f4954b1741c0206bbbb3cfac7d8ba",
+        "masks/layer_M2.png": "1ac8cd36d155a8156e238db338f4d3c539af3cc25b933debcab7c2087462fa79",
+        "masks/layer_M3.png": "f5b698ac9a5b7b4ca2fa3963677b57e110a1f2f3b9a4c4c10f8dc5639a8901de"
+      }
+    },
+    {
+      "wall_seconds": 2.237426542211324,
+      "peak_rss_bytes": 210698240,
+      "output_bytes": 13995272,
+      "config_hash": "3072ead94c8f3d4f5c77b5a3e6362e1f721af0d21de5db15f1ef4e5f9a06cf23",
+      "input_hashes": {
+        "manifest": "13ae3d3116945e52b2746cb80e272bebb7715b92a2d8062b9fefa5070f9ebfff",
+        "masks/electrode_D1.png": "e03fd41360029f7b92c9f1be612a370cf9bc688b02f7ff7a6e393988476437f5",
+        "masks/electrode_D2.png": "cb95d01852156fafb69198b8d1bb8262c1c4c7cb0a8b57db496d1cac17e450bd",
+        "masks/electrode_D3.png": "851c1845432fb14d848634df7e19d35bbf379eecc46a995b9df95defcacb2ce4",
+        "masks/electrode_D4.png": "2598a09b44fc10b927484c5135ad390eae080b6ca7640e7091ac9c1e5cf11ed3",
+        "masks/electrode_G1.png": "52a67c97176b60ea5eb656b6a1145b835a4a368ce422e001314ac58e6e5b11d9",
+        "masks/electrode_G2.png": "4f93b296209966ce65c37391e7f98adfede4437245d1d280a4cc36db28c3b2a1",
+        "masks/electrode_G3.png": "23bbb0e4711d95e98f24e41650e9524dd06e0aaac116f59ad6b80e51a0b9f94c",
+        "masks/electrode_P1.png": "67c9f203eb447603dac449900c55cfa8282869e2539089903a07b5e27cacae21",
+        "masks/electrode_P2.png": "7e1c1ade09144ca9415d3a2db52b47dcb262ea181e9857b165aa077e5070b823",
+        "masks/electrode_P3.png": "02317ac942583b934c2d3bdcdf5fcb864d4ae2ffdac05d543e4e19945bc83df3",
+        "masks/layer_M1.png": "608b06e03255ca4b084161478fb4bb231b0f4954b1741c0206bbbb3cfac7d8ba",
+        "masks/layer_M2.png": "1ac8cd36d155a8156e238db338f4d3c539af3cc25b933debcab7c2087462fa79",
+        "masks/layer_M3.png": "f5b698ac9a5b7b4ca2fa3963677b57e110a1f2f3b9a4c4c10f8dc5639a8901de"
+      }
+    },
+    {
+      "wall_seconds": 2.219061667099595,
+      "peak_rss_bytes": 205406208,
+      "output_bytes": 13995272,
+      "config_hash": "3072ead94c8f3d4f5c77b5a3e6362e1f721af0d21de5db15f1ef4e5f9a06cf23",
+      "input_hashes": {
+        "manifest": "13ae3d3116945e52b2746cb80e272bebb7715b92a2d8062b9fefa5070f9ebfff",
+        "masks/electrode_D1.png": "e03fd41360029f7b92c9f1be612a370cf9bc688b02f7ff7a6e393988476437f5",
+        "masks/electrode_D2.png": "cb95d01852156fafb69198b8d1bb8262c1c4c7cb0a8b57db496d1cac17e450bd",
+        "masks/electrode_D3.png": "851c1845432fb14d848634df7e19d35bbf379eecc46a995b9df95defcacb2ce4",
+        "masks/electrode_D4.png": "2598a09b44fc10b927484c5135ad390eae080b6ca7640e7091ac9c1e5cf11ed3",
+        "masks/electrode_G1.png": "52a67c97176b60ea5eb656b6a1145b835a4a368ce422e001314ac58e6e5b11d9",
+        "masks/electrode_G2.png": "4f93b296209966ce65c37391e7f98adfede4437245d1d280a4cc36db28c3b2a1",
+        "masks/electrode_G3.png": "23bbb0e4711d95e98f24e41650e9524dd06e0aaac116f59ad6b80e51a0b9f94c",
+        "masks/electrode_P1.png": "67c9f203eb447603dac449900c55cfa8282869e2539089903a07b5e27cacae21",
+        "masks/electrode_P2.png": "7e1c1ade09144ca9415d3a2db52b47dcb262ea181e9857b165aa077e5070b823",
+        "masks/electrode_P3.png": "02317ac942583b934c2d3bdcdf5fcb864d4ae2ffdac05d543e4e19945bc83df3",
+        "masks/layer_M1.png": "608b06e03255ca4b084161478fb4bb231b0f4954b1741c0206bbbb3cfac7d8ba",
+        "masks/layer_M2.png": "1ac8cd36d155a8156e238db338f4d3c539af3cc25b933debcab7c2087462fa79",
+        "masks/layer_M3.png": "f5b698ac9a5b7b4ca2fa3963677b57e110a1f2f3b9a4c4c10f8dc5639a8901de"
+      }
+    },
+    {
+      "wall_seconds": 2.2715214581694454,
+      "peak_rss_bytes": 218529792,
+      "output_bytes": 13995272,
+      "config_hash": "3072ead94c8f3d4f5c77b5a3e6362e1f721af0d21de5db15f1ef4e5f9a06cf23",
+      "input_hashes": {
+        "manifest": "13ae3d3116945e52b2746cb80e272bebb7715b92a2d8062b9fefa5070f9ebfff",
+        "masks/electrode_D1.png": "e03fd41360029f7b92c9f1be612a370cf9bc688b02f7ff7a6e393988476437f5",
+        "masks/electrode_D2.png": "cb95d01852156fafb69198b8d1bb8262c1c4c7cb0a8b57db496d1cac17e450bd",
+        "masks/electrode_D3.png": "851c1845432fb14d848634df7e19d35bbf379eecc46a995b9df95defcacb2ce4",
+        "masks/electrode_D4.png": "2598a09b44fc10b927484c5135ad390eae080b6ca7640e7091ac9c1e5cf11ed3",
+        "masks/electrode_G1.png": "52a67c97176b60ea5eb656b6a1145b835a4a368ce422e001314ac58e6e5b11d9",
+        "masks/electrode_G2.png": "4f93b296209966ce65c37391e7f98adfede4437245d1d280a4cc36db28c3b2a1",
+        "masks/electrode_G3.png": "23bbb0e4711d95e98f24e41650e9524dd06e0aaac116f59ad6b80e51a0b9f94c",
+        "masks/electrode_P1.png": "67c9f203eb447603dac449900c55cfa8282869e2539089903a07b5e27cacae21",
+        "masks/electrode_P2.png": "7e1c1ade09144ca9415d3a2db52b47dcb262ea181e9857b165aa077e5070b823",
+        "masks/electrode_P3.png": "02317ac942583b934c2d3bdcdf5fcb864d4ae2ffdac05d543e4e19945bc83df3",
+        "masks/layer_M1.png": "608b06e03255ca4b084161478fb4bb231b0f4954b1741c0206bbbb3cfac7d8ba",
+        "masks/layer_M2.png": "1ac8cd36d155a8156e238db338f4d3c539af3cc25b933debcab7c2087462fa79",
+        "masks/layer_M3.png": "f5b698ac9a5b7b4ca2fa3963677b57e110a1f2f3b9a4c4c10f8dc5639a8901de"
+      }
+    }
+  ],
+  "summary": {
+    "repeats": 5,
+    "wall_median_seconds": 2.237426542211324,
+    "wall_min_seconds": 2.2133739579003304,
+    "wall_max_seconds": 2.2715214581694454,
+    "wall_mean_seconds": 2.2388054250739513,
+    "wall_cv": 0.009580576393337769,
+    "peak_rss_max_bytes": 218529792,
+    "output_bytes_median": 13995272
+  }
+}

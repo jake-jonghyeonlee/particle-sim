@@ -1,0 +1,19 @@
+{
+  "git_commit": "f4372519fa5aa61dc423ecd476f7224c845e6d6d",
+  "versions": {
+    "numpy": "2.5.3",
+    "scipy": "1.18.1",
+    "pandas": "3.0.5",
+    "pydantic": "2.13.5",
+    "zarr": "3.4.0",
+    "matplotlib": "3.11.2",
+    "pyarrow": "25.0.1",
+    "pytest": "9.1.1"
+  },
+  "hardware": "Mac mini / Apple M4 Pro / 12 cores / 48 GB",
+  "requirements_files_present": {
+    "requirements.txt": false,
+    "requirements-dev.txt": false,
+    "requirements.lock.txt": false
+  }
+}

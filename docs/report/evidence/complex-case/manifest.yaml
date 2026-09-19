@@ -1,0 +1,191 @@
+schema_version: '1.0'
+product_id: SYN_COMPLEX_MULTILAYER
+product_family: SYN
+design_version: V01
+design_lineage_id: SYN_L1
+fab_id: FAB_SYN
+is_synthetic: true
+coordinate_system:
+  origin: upper_left
+  x_direction: right
+  y_direction: down
+  pixel_size_x_um: 0.5
+  pixel_size_y_um: 0.5
+  roi_width_um: 100.0
+  roi_height_um: 100.0
+stack:
+- layer_name: M1
+  process_order: 0
+  material_type: conductor
+  thickness_um: 0.3
+  patterned: true
+- layer_name: GI
+  process_order: 1
+  material_type: inorganic
+  thickness_um: 0.4
+  planarization_factor: 0.0
+  patterned: false
+- layer_name: M2
+  process_order: 2
+  material_type: conductor
+  thickness_um: 0.3
+  patterned: true
+- layer_name: PLN
+  process_order: 3
+  material_type: organic
+  thickness_um: 2.0
+  planarization_factor: 0.8
+  patterned: false
+- layer_name: M3
+  process_order: 4
+  material_type: conductor
+  thickness_um: 0.1
+  patterned: true
+layer_masks:
+- layer_name: M1
+  path: masks/layer_M1.png
+- layer_name: M2
+  path: masks/layer_M2.png
+- layer_name: M3
+  path: masks/layer_M3.png
+electrodes:
+- electrode_id: G1
+  layer_name: M1
+  net_id: NET_G1
+  electrode_role: GATE
+  path: masks/electrode_G1.png
+- electrode_id: G2
+  layer_name: M1
+  net_id: NET_G2
+  electrode_role: GATE
+  path: masks/electrode_G2.png
+- electrode_id: G3
+  layer_name: M1
+  net_id: NET_G3
+  electrode_role: GATE
+  path: masks/electrode_G3.png
+- electrode_id: D1
+  layer_name: M2
+  net_id: NET_D1
+  electrode_role: DATA
+  path: masks/electrode_D1.png
+- electrode_id: D2
+  layer_name: M2
+  net_id: NET_D2
+  electrode_role: DATA
+  path: masks/electrode_D2.png
+- electrode_id: D3
+  layer_name: M2
+  net_id: NET_D3
+  electrode_role: DATA
+  path: masks/electrode_D3.png
+- electrode_id: D4
+  layer_name: M2
+  net_id: NET_D4
+  electrode_role: DATA
+  path: masks/electrode_D4.png
+- electrode_id: P1
+  layer_name: M3
+  net_id: NET_P1
+  electrode_role: PIXEL
+  path: masks/electrode_P1.png
+- electrode_id: P2
+  layer_name: M3
+  net_id: NET_P2
+  electrode_role: PIXEL
+  path: masks/electrode_P2.png
+- electrode_id: P3
+  layer_name: M3
+  net_id: NET_P3
+  electrode_role: PIXEL
+  path: masks/electrode_P3.png
+particle_source_steps:
+- step_id: S_M1
+  lands_after_layer: M1
+  surface_model: conformal
+  fab_distribution_layer: S_M1
+- step_id: S_M2
+  lands_after_layer: M2
+  surface_model: conformal
+  fab_distribution_layer: S_M2
+- step_id: S_PLN
+  lands_after_layer: PLN
+  surface_model: flat
+  fab_distribution_layer: S_PLN
+electrode_pairs:
+- pair_id: G1__G2
+  electrode_a: G1
+  electrode_b: G2
+  failure_mode: lateral_short
+- pair_id: G2__G3
+  electrode_a: G2
+  electrode_b: G3
+  failure_mode: lateral_short
+- pair_id: D1__D2
+  electrode_a: D1
+  electrode_b: D2
+  failure_mode: lateral_short
+- pair_id: D1__D3
+  electrode_a: D1
+  electrode_b: D3
+  failure_mode: lateral_short
+- pair_id: D2__D4
+  electrode_a: D2
+  electrode_b: D4
+  failure_mode: lateral_short
+- pair_id: D3__D4
+  electrode_a: D3
+  electrode_b: D4
+  failure_mode: lateral_short
+- pair_id: G1__D1
+  electrode_a: G1
+  electrode_b: D1
+  failure_mode: vertical_short
+- pair_id: G2__D1
+  electrode_a: G2
+  electrode_b: D1
+  failure_mode: vertical_short
+- pair_id: G2__D3
+  electrode_a: G2
+  electrode_b: D3
+  failure_mode: vertical_short
+- pair_id: G3__D2
+  electrode_a: G3
+  electrode_b: D2
+  failure_mode: vertical_short
+- pair_id: D1__P1
+  electrode_a: D1
+  electrode_b: P1
+  failure_mode: vertical_short
+- pair_id: D2__P3
+  electrode_a: D2
+  electrode_b: P3
+  failure_mode: vertical_short
+- pair_id: D3__P2
+  electrode_a: D3
+  electrode_b: P2
+  failure_mode: vertical_short
+- pair_id: D4__P3
+  electrode_a: D4
+  electrode_b: P3
+  failure_mode: vertical_short
+- pair_id: G1__D4
+  electrode_a: G1
+  electrode_b: D4
+  failure_mode: vertical_short
+- pair_id: G3__D3
+  electrode_a: G3
+  electrode_b: D3
+  failure_mode: vertical_short
+open_paths: []
+particle_sizes_um:
+- 2.0
+- 4.0
+- 6.0
+- 8.0
+- 10.0
+embedding_depth_um: 0.0
+contact_margin_um: 0.0
+post_step_policy:
+  mode: protrusion
+  coverage_break_factor: 1.5

@@ -1,0 +1,10 @@
+{
+  "html_sections": 16,
+  "image_references": 8,
+  "missing_images": [],
+  "pdf_created": false,
+  "chrome_attempts": 2,
+  "chrome_exit_code": 134,
+  "chrome_crash": "SIGABRT in _RegisterApplication / TransformProcessType before HTML load",
+  "pdf_page_count": null
+}

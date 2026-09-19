@@ -8,6 +8,7 @@ import pytest
 from particle_sim.errors import InputContractError
 from particle_sim.schema import (
     NormalSpec,
+    OverlayXYSpec,
     ScenarioConfig,
     UniformSpec,
 )
@@ -265,3 +266,27 @@ def test_build_scenarios_keys_match_config() -> None:
         assert set(s.overlay_xy_um) == {"l1"}
         assert set(s.cd_bias_um) == {"c"}
         assert set(s.planarization_factor) == {"p"}
+
+
+def test_schema_v2_overlay_uses_different_x_y_distributions() -> None:
+    config = ScenarioConfig(
+        schema_version="2.0",
+        assumption_set="measured-mask-variation",
+        evidence="measured",
+        overlay_reference_layer="mask1",
+        overlay_sign_convention="positive_x_right_positive_y_down",
+        overlay_um={
+            "mask2": OverlayXYSpec(
+                x=NormalSpec(mean=1.0, sigma=0.1, evidence="measured", source_id="OV-X"),
+                y=NormalSpec(mean=-2.0, sigma=0.5, evidence="measured", source_id="OV-Y"),
+            )
+        },
+    )
+    scenarios = build_scenarios(config, 8, 17)
+    xs = np.array([item.overlay_xy_um["mask2"][0] for item in scenarios])
+    ys = np.array([item.overlay_xy_um["mask2"][1] for item in scenarios])
+    assert xs.mean() == pytest.approx(1.0, abs=0.02)
+    assert ys.mean() == pytest.approx(-2.0, abs=0.05)
+    assert xs.std() == pytest.approx(0.1, rel=0.15)
+    assert ys.std() == pytest.approx(0.5, rel=0.15)
+    assert abs(float(np.corrcoef(xs, ys)[0, 1])) < 0.1

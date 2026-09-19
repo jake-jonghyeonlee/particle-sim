@@ -151,7 +151,12 @@ def plot_convergence(convergence: pd.DataFrame, step_id: str, path: Path) -> Pat
     fig, ax = plt.subplots(figsize=(7, 5))
     rows = convergence[convergence["source_step"] == step_id]
     for index, (pair_id, group) in enumerate(rows.groupby("pair_id", sort=False)):
-        for size, sized in group.groupby("particle_size_um", sort=True):
+        group_keys = ["particle_size_um"]
+        if "scramble_seed" in group.columns:
+            group_keys.append("scramble_seed")
+        for key, sized in group.groupby(group_keys, sort=True):
+            size = float(key[0] if isinstance(key, tuple) else key)
+            seed = key[1] if isinstance(key, tuple) else None
             sized = sized.sort_values("scenario_count")
             ax.plot(
                 sized["scenario_count"],
@@ -159,7 +164,7 @@ def plot_convergence(convergence: pd.DataFrame, step_id: str, path: Path) -> Pat
                 "-o",
                 color=LAYER_COLORS[index % len(LAYER_COLORS)],
                 alpha=0.4 + 0.6 * float(size) / float(group["particle_size_um"].max()),
-                label=f"{pair_id} d={size:g}um",
+                label=f"{pair_id} d={size:g}um" + ("" if seed is None else f" seed={seed}"),
             )
     ax.set_xscale("log", base=2)
     ax.set_xlabel("scenario count")

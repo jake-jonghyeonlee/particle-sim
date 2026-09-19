@@ -1,0 +1,485 @@
+{
+  "label": "complex-failure-mode-pilot-1000x1000",
+  "canvas_size_yx": [
+    1000,
+    1000
+  ],
+  "purpose": "relative TAT and geometric-risk mix; synthetic data, not Fab probability",
+  "python": "3.12.13 (main, Mar  3 2026, 12:39:30) [Clang 21.0.0 (clang-2100.0.123.102)]",
+  "platform": "macOS-26.5.2-arm64-arm-64bit",
+  "repeats": 1,
+  "manifests": {
+    "lateral_short": {
+      "path": "/Users/jonghyeonlee/git/particle-sim/docs/report/work/failure-mode-pilot-padded-1000/lateral_short-case/manifest.yaml",
+      "sha256": "4d1f6f98318bdb52b24de98b85b1c819157b897a09ece50dc354dd9db714ef8b"
+    },
+    "vertical_short": {
+      "path": "/Users/jonghyeonlee/git/particle-sim/docs/report/work/failure-mode-pilot-padded-1000/vertical_short-case/manifest.yaml",
+      "sha256": "6a9f31f95e56f8fba8d63707036d24f5a7469bc1d4270d4f3c58e2c6fe305e65"
+    },
+    "open": {
+      "path": "/Users/jonghyeonlee/git/particle-sim/docs/report/work/failure-mode-pilot-padded-1000/open-case/manifest.yaml",
+      "sha256": "2df54c528e2748cc2b31af5e73eb2a8ef39f41d9400611b07db16d60d63c9a54"
+    },
+    "combined": {
+      "path": "/Users/jonghyeonlee/git/particle-sim/docs/report/work/failure-mode-pilot-padded-1000/combined-case/manifest.yaml",
+      "sha256": "e66ef9b77e399ff46e40ef22738751ddda50cd33b5feea528d46a3b3a79dd1ca"
+    }
+  },
+  "active_counts": {
+    "lateral_short": {
+      "electrode_pair_count": 6,
+      "open_path_count": 0,
+      "source_step_count": 3,
+      "particle_size_count": 5,
+      "active_failure_unit_conditions": 90
+    },
+    "vertical_short": {
+      "electrode_pair_count": 10,
+      "open_path_count": 0,
+      "source_step_count": 3,
+      "particle_size_count": 5,
+      "active_failure_unit_conditions": 150
+    },
+    "open": {
+      "electrode_pair_count": 0,
+      "open_path_count": 3,
+      "source_step_count": 3,
+      "particle_size_count": 5,
+      "active_failure_unit_conditions": 35
+    },
+    "combined": {
+      "electrode_pair_count": 16,
+      "open_path_count": 3,
+      "source_step_count": 3,
+      "particle_size_count": 5,
+      "active_failure_unit_conditions": 275
+    }
+  },
+  "warmups": {
+    "lateral_short": {
+      "wall_seconds": 6.090052834013477,
+      "peak_rss_bytes": 658833408,
+      "output_bytes": 189124915,
+      "config_hash": "a5e7ad07d3cb1c47213cd587e237db2ab4c61fb65293ead0a253f388d2478c15",
+      "input_hashes": {
+        "manifest": "4d1f6f98318bdb52b24de98b85b1c819157b897a09ece50dc354dd9db714ef8b",
+        "masks/electrode_D1.png": "300e93f371c79c43ceb10a17f71c163846095e71b09d9f8dc2f13827f83a1ece",
+        "masks/electrode_D2.png": "ca88d8a87581b662093c3bda31dc759f7fd1ec6d8723c4235ecb9cf978e2e7c5",
+        "masks/electrode_D3.png": "ab9d186d6faa0fcba171442b09b557f2cd479e72dcbbf34f58b72a7621b422bc",
+        "masks/electrode_D4.png": "d7c4099d051b0c8c43b2e688b0a7aead05bfc59f61fd31599c9a48395eb7a464",
+        "masks/electrode_G1.png": "bdbbda295de3d4e2adfd966fef1e4315c043b9f8717244877fa0e6b07214aedb",
+        "masks/electrode_G2.png": "2e14a8a47d94c07ddc9940b9df7a9c9af288ad7f03abd3f8f820d1f5171059ef",
+        "masks/electrode_G3.png": "0ceb23f7a81219e45ff7f39c2f4896adb5c26c165da85090be3ce83ed13f3dc6",
+        "masks/electrode_P1.png": "a7c4ef25fc9f1272b0920e6a583ca057628897c499b5e1b26d928c1afe0296c5",
+        "masks/electrode_P2.png": "7601a019d05f09daf4821a3112c6422809c17737cf15f5c083c264b1e78f9a3a",
+        "masks/electrode_P3.png": "7407321c3b00fa7302a614b76e298ab08c791a400a5b505f3905f4337863d206",
+        "masks/layer_M1.png": "c243445dab954917ad7ebb51858535e038fc546e415bf03d15c0903efb93e44e",
+        "masks/layer_M2.png": "f9c24d08edfc093842ed72d35d764fd6e83d83a85e0cf52a80bfbad7aa7e3f2a",
+        "masks/layer_M3.png": "5985e3912699d7d43a62bde765ab417da02ab62ab1285a70709690cd8412fcfc"
+      }
+    },
+    "vertical_short": {
+      "wall_seconds": 9.237097416073084,
+      "peak_rss_bytes": 751140864,
+      "output_bytes": 313017759,
+      "config_hash": "2bfbcf2983a57d036491852232b19fb3e55a021125f5a193a54dfb247a9970d2",
+      "input_hashes": {
+        "manifest": "6a9f31f95e56f8fba8d63707036d24f5a7469bc1d4270d4f3c58e2c6fe305e65",
+        "masks/electrode_D1.png": "300e93f371c79c43ceb10a17f71c163846095e71b09d9f8dc2f13827f83a1ece",
+        "masks/electrode_D2.png": "ca88d8a87581b662093c3bda31dc759f7fd1ec6d8723c4235ecb9cf978e2e7c5",
+        "masks/electrode_D3.png": "ab9d186d6faa0fcba171442b09b557f2cd479e72dcbbf34f58b72a7621b422bc",
+        "masks/electrode_D4.png": "d7c4099d051b0c8c43b2e688b0a7aead05bfc59f61fd31599c9a48395eb7a464",
+        "masks/electrode_G1.png": "bdbbda295de3d4e2adfd966fef1e4315c043b9f8717244877fa0e6b07214aedb",
+        "masks/electrode_G2.png": "2e14a8a47d94c07ddc9940b9df7a9c9af288ad7f03abd3f8f820d1f5171059ef",
+        "masks/electrode_G3.png": "0ceb23f7a81219e45ff7f39c2f4896adb5c26c165da85090be3ce83ed13f3dc6",
+        "masks/electrode_P1.png": "a7c4ef25fc9f1272b0920e6a583ca057628897c499b5e1b26d928c1afe0296c5",
+        "masks/electrode_P2.png": "7601a019d05f09daf4821a3112c6422809c17737cf15f5c083c264b1e78f9a3a",
+        "masks/electrode_P3.png": "7407321c3b00fa7302a614b76e298ab08c791a400a5b505f3905f4337863d206",
+        "masks/layer_M1.png": "c243445dab954917ad7ebb51858535e038fc546e415bf03d15c0903efb93e44e",
+        "masks/layer_M2.png": "f9c24d08edfc093842ed72d35d764fd6e83d83a85e0cf52a80bfbad7aa7e3f2a",
+        "masks/layer_M3.png": "5985e3912699d7d43a62bde765ab417da02ab62ab1285a70709690cd8412fcfc"
+      }
+    },
+    "open": {
+      "wall_seconds": 4.638247583061457,
+      "peak_rss_bytes": 312868864,
+      "output_bytes": 73339,
+      "config_hash": "6d01aed3a0b0a7b622e35ddb89408575032b5ca66d7878999b95373cdc3d323e",
+      "input_hashes": {
+        "manifest": "2df54c528e2748cc2b31af5e73eb2a8ef39f41d9400611b07db16d60d63c9a54",
+        "masks/electrode_D1.png": "300e93f371c79c43ceb10a17f71c163846095e71b09d9f8dc2f13827f83a1ece",
+        "masks/electrode_D2.png": "ca88d8a87581b662093c3bda31dc759f7fd1ec6d8723c4235ecb9cf978e2e7c5",
+        "masks/electrode_D3.png": "ab9d186d6faa0fcba171442b09b557f2cd479e72dcbbf34f58b72a7621b422bc",
+        "masks/electrode_D4.png": "d7c4099d051b0c8c43b2e688b0a7aead05bfc59f61fd31599c9a48395eb7a464",
+        "masks/electrode_G1.png": "bdbbda295de3d4e2adfd966fef1e4315c043b9f8717244877fa0e6b07214aedb",
+        "masks/electrode_G2.png": "2e14a8a47d94c07ddc9940b9df7a9c9af288ad7f03abd3f8f820d1f5171059ef",
+        "masks/electrode_G3.png": "0ceb23f7a81219e45ff7f39c2f4896adb5c26c165da85090be3ce83ed13f3dc6",
+        "masks/electrode_P1.png": "a7c4ef25fc9f1272b0920e6a583ca057628897c499b5e1b26d928c1afe0296c5",
+        "masks/electrode_P2.png": "7601a019d05f09daf4821a3112c6422809c17737cf15f5c083c264b1e78f9a3a",
+        "masks/electrode_P3.png": "7407321c3b00fa7302a614b76e298ab08c791a400a5b505f3905f4337863d206",
+        "masks/layer_M1.png": "c243445dab954917ad7ebb51858535e038fc546e415bf03d15c0903efb93e44e",
+        "masks/layer_M2.png": "f9c24d08edfc093842ed72d35d764fd6e83d83a85e0cf52a80bfbad7aa7e3f2a",
+        "masks/layer_M3.png": "5985e3912699d7d43a62bde765ab417da02ab62ab1285a70709690cd8412fcfc",
+        "masks/terminal_D1_OPEN_a.png": "cc0f3fbe8d8e1b71023d096e9b477e1f78dc35e7fbc4df803d5f235abf4b7571",
+        "masks/terminal_D1_OPEN_b.png": "06d596b599ca3755b0d8b6b58ceeac871f138deb87718fdf2529ea5aceaf4a82",
+        "masks/terminal_D2_OPEN_a.png": "ebcc8a11ea0792bea98554ea36eedb4514e648e1da73fb0bc261819518585f40",
+        "masks/terminal_D2_OPEN_b.png": "11ff071d317f0318966c0bf21b867fa41bb7daafb336273ca7d1af4ab86879c7",
+        "masks/terminal_G1_OPEN_a.png": "350cc44404d4c10c591d63d3167baecfd57bb4118fe60f2aa22ec23081caa218",
+        "masks/terminal_G1_OPEN_b.png": "7ec2389e0b78fa1e8ffefae7ada18b0447881e7bccbd499ebde5b1420e7d1ea9"
+      }
+    },
+    "combined": {
+      "wall_seconds": 17.596164791844785,
+      "peak_rss_bytes": 917159936,
+      "output_bytes": 502116265,
+      "config_hash": "9a58c9c340ced90f085d0b887e3f11c43721d452c66d9d076a8ac083a0835eea",
+      "input_hashes": {
+        "manifest": "e66ef9b77e399ff46e40ef22738751ddda50cd33b5feea528d46a3b3a79dd1ca",
+        "masks/electrode_D1.png": "300e93f371c79c43ceb10a17f71c163846095e71b09d9f8dc2f13827f83a1ece",
+        "masks/electrode_D2.png": "ca88d8a87581b662093c3bda31dc759f7fd1ec6d8723c4235ecb9cf978e2e7c5",
+        "masks/electrode_D3.png": "ab9d186d6faa0fcba171442b09b557f2cd479e72dcbbf34f58b72a7621b422bc",
+        "masks/electrode_D4.png": "d7c4099d051b0c8c43b2e688b0a7aead05bfc59f61fd31599c9a48395eb7a464",
+        "masks/electrode_G1.png": "bdbbda295de3d4e2adfd966fef1e4315c043b9f8717244877fa0e6b07214aedb",
+        "masks/electrode_G2.png": "2e14a8a47d94c07ddc9940b9df7a9c9af288ad7f03abd3f8f820d1f5171059ef",
+        "masks/electrode_G3.png": "0ceb23f7a81219e45ff7f39c2f4896adb5c26c165da85090be3ce83ed13f3dc6",
+        "masks/electrode_P1.png": "a7c4ef25fc9f1272b0920e6a583ca057628897c499b5e1b26d928c1afe0296c5",
+        "masks/electrode_P2.png": "7601a019d05f09daf4821a3112c6422809c17737cf15f5c083c264b1e78f9a3a",
+        "masks/electrode_P3.png": "7407321c3b00fa7302a614b76e298ab08c791a400a5b505f3905f4337863d206",
+        "masks/layer_M1.png": "c243445dab954917ad7ebb51858535e038fc546e415bf03d15c0903efb93e44e",
+        "masks/layer_M2.png": "f9c24d08edfc093842ed72d35d764fd6e83d83a85e0cf52a80bfbad7aa7e3f2a",
+        "masks/layer_M3.png": "5985e3912699d7d43a62bde765ab417da02ab62ab1285a70709690cd8412fcfc",
+        "masks/terminal_D1_OPEN_a.png": "cc0f3fbe8d8e1b71023d096e9b477e1f78dc35e7fbc4df803d5f235abf4b7571",
+        "masks/terminal_D1_OPEN_b.png": "06d596b599ca3755b0d8b6b58ceeac871f138deb87718fdf2529ea5aceaf4a82",
+        "masks/terminal_D2_OPEN_a.png": "ebcc8a11ea0792bea98554ea36eedb4514e648e1da73fb0bc261819518585f40",
+        "masks/terminal_D2_OPEN_b.png": "11ff071d317f0318966c0bf21b867fa41bb7daafb336273ca7d1af4ab86879c7",
+        "masks/terminal_G1_OPEN_a.png": "350cc44404d4c10c591d63d3167baecfd57bb4118fe60f2aa22ec23081caa218",
+        "masks/terminal_G1_OPEN_b.png": "7ec2389e0b78fa1e8ffefae7ada18b0447881e7bccbd499ebde5b1420e7d1ea9"
+      }
+    }
+  },
+  "runs": {
+    "lateral_short": [
+      {
+        "wall_seconds": 6.111753833014518,
+        "peak_rss_bytes": 626130944,
+        "output_bytes": 189124915,
+        "config_hash": "a5e7ad07d3cb1c47213cd587e237db2ab4c61fb65293ead0a253f388d2478c15",
+        "input_hashes": {
+          "manifest": "4d1f6f98318bdb52b24de98b85b1c819157b897a09ece50dc354dd9db714ef8b",
+          "masks/electrode_D1.png": "300e93f371c79c43ceb10a17f71c163846095e71b09d9f8dc2f13827f83a1ece",
+          "masks/electrode_D2.png": "ca88d8a87581b662093c3bda31dc759f7fd1ec6d8723c4235ecb9cf978e2e7c5",
+          "masks/electrode_D3.png": "ab9d186d6faa0fcba171442b09b557f2cd479e72dcbbf34f58b72a7621b422bc",
+          "masks/electrode_D4.png": "d7c4099d051b0c8c43b2e688b0a7aead05bfc59f61fd31599c9a48395eb7a464",
+          "masks/electrode_G1.png": "bdbbda295de3d4e2adfd966fef1e4315c043b9f8717244877fa0e6b07214aedb",
+          "masks/electrode_G2.png": "2e14a8a47d94c07ddc9940b9df7a9c9af288ad7f03abd3f8f820d1f5171059ef",
+          "masks/electrode_G3.png": "0ceb23f7a81219e45ff7f39c2f4896adb5c26c165da85090be3ce83ed13f3dc6",
+          "masks/electrode_P1.png": "a7c4ef25fc9f1272b0920e6a583ca057628897c499b5e1b26d928c1afe0296c5",
+          "masks/electrode_P2.png": "7601a019d05f09daf4821a3112c6422809c17737cf15f5c083c264b1e78f9a3a",
+          "masks/electrode_P3.png": "7407321c3b00fa7302a614b76e298ab08c791a400a5b505f3905f4337863d206",
+          "masks/layer_M1.png": "c243445dab954917ad7ebb51858535e038fc546e415bf03d15c0903efb93e44e",
+          "masks/layer_M2.png": "f9c24d08edfc093842ed72d35d764fd6e83d83a85e0cf52a80bfbad7aa7e3f2a",
+          "masks/layer_M3.png": "5985e3912699d7d43a62bde765ab417da02ab62ab1285a70709690cd8412fcfc"
+        }
+      }
+    ],
+    "vertical_short": [
+      {
+        "wall_seconds": 9.3241720830556,
+        "peak_rss_bytes": 717406208,
+        "output_bytes": 313017759,
+        "config_hash": "2bfbcf2983a57d036491852232b19fb3e55a021125f5a193a54dfb247a9970d2",
+        "input_hashes": {
+          "manifest": "6a9f31f95e56f8fba8d63707036d24f5a7469bc1d4270d4f3c58e2c6fe305e65",
+          "masks/electrode_D1.png": "300e93f371c79c43ceb10a17f71c163846095e71b09d9f8dc2f13827f83a1ece",
+          "masks/electrode_D2.png": "ca88d8a87581b662093c3bda31dc759f7fd1ec6d8723c4235ecb9cf978e2e7c5",
+          "masks/electrode_D3.png": "ab9d186d6faa0fcba171442b09b557f2cd479e72dcbbf34f58b72a7621b422bc",
+          "masks/electrode_D4.png": "d7c4099d051b0c8c43b2e688b0a7aead05bfc59f61fd31599c9a48395eb7a464",
+          "masks/electrode_G1.png": "bdbbda295de3d4e2adfd966fef1e4315c043b9f8717244877fa0e6b07214aedb",
+          "masks/electrode_G2.png": "2e14a8a47d94c07ddc9940b9df7a9c9af288ad7f03abd3f8f820d1f5171059ef",
+          "masks/electrode_G3.png": "0ceb23f7a81219e45ff7f39c2f4896adb5c26c165da85090be3ce83ed13f3dc6",
+          "masks/electrode_P1.png": "a7c4ef25fc9f1272b0920e6a583ca057628897c499b5e1b26d928c1afe0296c5",
+          "masks/electrode_P2.png": "7601a019d05f09daf4821a3112c6422809c17737cf15f5c083c264b1e78f9a3a",
+          "masks/electrode_P3.png": "7407321c3b00fa7302a614b76e298ab08c791a400a5b505f3905f4337863d206",
+          "masks/layer_M1.png": "c243445dab954917ad7ebb51858535e038fc546e415bf03d15c0903efb93e44e",
+          "masks/layer_M2.png": "f9c24d08edfc093842ed72d35d764fd6e83d83a85e0cf52a80bfbad7aa7e3f2a",
+          "masks/layer_M3.png": "5985e3912699d7d43a62bde765ab417da02ab62ab1285a70709690cd8412fcfc"
+        }
+      }
+    ],
+    "open": [
+      {
+        "wall_seconds": 4.688701292034239,
+        "peak_rss_bytes": 329596928,
+        "output_bytes": 73339,
+        "config_hash": "6d01aed3a0b0a7b622e35ddb89408575032b5ca66d7878999b95373cdc3d323e",
+        "input_hashes": {
+          "manifest": "2df54c528e2748cc2b31af5e73eb2a8ef39f41d9400611b07db16d60d63c9a54",
+          "masks/electrode_D1.png": "300e93f371c79c43ceb10a17f71c163846095e71b09d9f8dc2f13827f83a1ece",
+          "masks/electrode_D2.png": "ca88d8a87581b662093c3bda31dc759f7fd1ec6d8723c4235ecb9cf978e2e7c5",
+          "masks/electrode_D3.png": "ab9d186d6faa0fcba171442b09b557f2cd479e72dcbbf34f58b72a7621b422bc",
+          "masks/electrode_D4.png": "d7c4099d051b0c8c43b2e688b0a7aead05bfc59f61fd31599c9a48395eb7a464",
+          "masks/electrode_G1.png": "bdbbda295de3d4e2adfd966fef1e4315c043b9f8717244877fa0e6b07214aedb",
+          "masks/electrode_G2.png": "2e14a8a47d94c07ddc9940b9df7a9c9af288ad7f03abd3f8f820d1f5171059ef",
+          "masks/electrode_G3.png": "0ceb23f7a81219e45ff7f39c2f4896adb5c26c165da85090be3ce83ed13f3dc6",
+          "masks/electrode_P1.png": "a7c4ef25fc9f1272b0920e6a583ca057628897c499b5e1b26d928c1afe0296c5",
+          "masks/electrode_P2.png": "7601a019d05f09daf4821a3112c6422809c17737cf15f5c083c264b1e78f9a3a",
+          "masks/electrode_P3.png": "7407321c3b00fa7302a614b76e298ab08c791a400a5b505f3905f4337863d206",
+          "masks/layer_M1.png": "c243445dab954917ad7ebb51858535e038fc546e415bf03d15c0903efb93e44e",
+          "masks/layer_M2.png": "f9c24d08edfc093842ed72d35d764fd6e83d83a85e0cf52a80bfbad7aa7e3f2a",
+          "masks/layer_M3.png": "5985e3912699d7d43a62bde765ab417da02ab62ab1285a70709690cd8412fcfc",
+          "masks/terminal_D1_OPEN_a.png": "cc0f3fbe8d8e1b71023d096e9b477e1f78dc35e7fbc4df803d5f235abf4b7571",
+          "masks/terminal_D1_OPEN_b.png": "06d596b599ca3755b0d8b6b58ceeac871f138deb87718fdf2529ea5aceaf4a82",
+          "masks/terminal_D2_OPEN_a.png": "ebcc8a11ea0792bea98554ea36eedb4514e648e1da73fb0bc261819518585f40",
+          "masks/terminal_D2_OPEN_b.png": "11ff071d317f0318966c0bf21b867fa41bb7daafb336273ca7d1af4ab86879c7",
+          "masks/terminal_G1_OPEN_a.png": "350cc44404d4c10c591d63d3167baecfd57bb4118fe60f2aa22ec23081caa218",
+          "masks/terminal_G1_OPEN_b.png": "7ec2389e0b78fa1e8ffefae7ada18b0447881e7bccbd499ebde5b1420e7d1ea9"
+        }
+      }
+    ],
+    "combined": [
+      {
+        "wall_seconds": 17.672731584170833,
+        "peak_rss_bytes": 919994368,
+        "output_bytes": 502116265,
+        "config_hash": "9a58c9c340ced90f085d0b887e3f11c43721d452c66d9d076a8ac083a0835eea",
+        "input_hashes": {
+          "manifest": "e66ef9b77e399ff46e40ef22738751ddda50cd33b5feea528d46a3b3a79dd1ca",
+          "masks/electrode_D1.png": "300e93f371c79c43ceb10a17f71c163846095e71b09d9f8dc2f13827f83a1ece",
+          "masks/electrode_D2.png": "ca88d8a87581b662093c3bda31dc759f7fd1ec6d8723c4235ecb9cf978e2e7c5",
+          "masks/electrode_D3.png": "ab9d186d6faa0fcba171442b09b557f2cd479e72dcbbf34f58b72a7621b422bc",
+          "masks/electrode_D4.png": "d7c4099d051b0c8c43b2e688b0a7aead05bfc59f61fd31599c9a48395eb7a464",
+          "masks/electrode_G1.png": "bdbbda295de3d4e2adfd966fef1e4315c043b9f8717244877fa0e6b07214aedb",
+          "masks/electrode_G2.png": "2e14a8a47d94c07ddc9940b9df7a9c9af288ad7f03abd3f8f820d1f5171059ef",
+          "masks/electrode_G3.png": "0ceb23f7a81219e45ff7f39c2f4896adb5c26c165da85090be3ce83ed13f3dc6",
+          "masks/electrode_P1.png": "a7c4ef25fc9f1272b0920e6a583ca057628897c499b5e1b26d928c1afe0296c5",
+          "masks/electrode_P2.png": "7601a019d05f09daf4821a3112c6422809c17737cf15f5c083c264b1e78f9a3a",
+          "masks/electrode_P3.png": "7407321c3b00fa7302a614b76e298ab08c791a400a5b505f3905f4337863d206",
+          "masks/layer_M1.png": "c243445dab954917ad7ebb51858535e038fc546e415bf03d15c0903efb93e44e",
+          "masks/layer_M2.png": "f9c24d08edfc093842ed72d35d764fd6e83d83a85e0cf52a80bfbad7aa7e3f2a",
+          "masks/layer_M3.png": "5985e3912699d7d43a62bde765ab417da02ab62ab1285a70709690cd8412fcfc",
+          "masks/terminal_D1_OPEN_a.png": "cc0f3fbe8d8e1b71023d096e9b477e1f78dc35e7fbc4df803d5f235abf4b7571",
+          "masks/terminal_D1_OPEN_b.png": "06d596b599ca3755b0d8b6b58ceeac871f138deb87718fdf2529ea5aceaf4a82",
+          "masks/terminal_D2_OPEN_a.png": "ebcc8a11ea0792bea98554ea36eedb4514e648e1da73fb0bc261819518585f40",
+          "masks/terminal_D2_OPEN_b.png": "11ff071d317f0318966c0bf21b867fa41bb7daafb336273ca7d1af4ab86879c7",
+          "masks/terminal_G1_OPEN_a.png": "350cc44404d4c10c591d63d3167baecfd57bb4118fe60f2aa22ec23081caa218",
+          "masks/terminal_G1_OPEN_b.png": "7ec2389e0b78fa1e8ffefae7ada18b0447881e7bccbd499ebde5b1420e7d1ea9"
+        }
+      }
+    ]
+  },
+  "tat_summary": {
+    "lateral_short": {
+      "repeats": 1,
+      "wall_median_seconds": 6.111753833014518,
+      "wall_min_seconds": 6.111753833014518,
+      "wall_max_seconds": 6.111753833014518,
+      "wall_mean_seconds": 6.111753833014518,
+      "wall_cv": 0.0,
+      "peak_rss_max_bytes": 626130944,
+      "output_bytes_median": 189124915,
+      "active_failure_unit_conditions": 90,
+      "wall_seconds_per_active_condition": 0.06790837592238354,
+      "isolated_tat_share": 0.3036952570506878
+    },
+    "vertical_short": {
+      "repeats": 1,
+      "wall_median_seconds": 9.3241720830556,
+      "wall_min_seconds": 9.3241720830556,
+      "wall_max_seconds": 9.3241720830556,
+      "wall_mean_seconds": 9.3241720830556,
+      "wall_cv": 0.0,
+      "peak_rss_max_bytes": 717406208,
+      "output_bytes_median": 313017759,
+      "active_failure_unit_conditions": 150,
+      "wall_seconds_per_active_condition": 0.06216114722037067,
+      "isolated_tat_share": 0.4633214810210585
+    },
+    "open": {
+      "repeats": 1,
+      "wall_median_seconds": 4.688701292034239,
+      "wall_min_seconds": 4.688701292034239,
+      "wall_max_seconds": 4.688701292034239,
+      "wall_mean_seconds": 4.688701292034239,
+      "wall_cv": 0.0,
+      "peak_rss_max_bytes": 329596928,
+      "output_bytes_median": 73339,
+      "active_failure_unit_conditions": 35,
+      "wall_seconds_per_active_condition": 0.1339628940581211,
+      "isolated_tat_share": 0.23298326192825372
+    },
+    "combined": {
+      "repeats": 1,
+      "wall_median_seconds": 17.672731584170833,
+      "wall_min_seconds": 17.672731584170833,
+      "wall_max_seconds": 17.672731584170833,
+      "wall_mean_seconds": 17.672731584170833,
+      "wall_cv": 0.0,
+      "peak_rss_max_bytes": 919994368,
+      "output_bytes_median": 502116265,
+      "active_failure_unit_conditions": 275,
+      "wall_seconds_per_active_condition": 0.06426447848789393,
+      "vs_isolated_sum_ratio": 0.8781644202111667
+    }
+  },
+  "combined_result": {
+    "path": "/Users/jonghyeonlee/git/particle-sim/docs/report/work/failure-mode-pilot-padded-1000/combined-result",
+    "retained_run_measurement": {
+      "wall_seconds": 17.689452042104676,
+      "peak_rss_bytes": 914604032,
+      "output_bytes": 502116265,
+      "config_hash": "9a58c9c340ced90f085d0b887e3f11c43721d452c66d9d076a8ac083a0835eea",
+      "input_hashes": {
+        "manifest": "e66ef9b77e399ff46e40ef22738751ddda50cd33b5feea528d46a3b3a79dd1ca",
+        "masks/electrode_D1.png": "300e93f371c79c43ceb10a17f71c163846095e71b09d9f8dc2f13827f83a1ece",
+        "masks/electrode_D2.png": "ca88d8a87581b662093c3bda31dc759f7fd1ec6d8723c4235ecb9cf978e2e7c5",
+        "masks/electrode_D3.png": "ab9d186d6faa0fcba171442b09b557f2cd479e72dcbbf34f58b72a7621b422bc",
+        "masks/electrode_D4.png": "d7c4099d051b0c8c43b2e688b0a7aead05bfc59f61fd31599c9a48395eb7a464",
+        "masks/electrode_G1.png": "bdbbda295de3d4e2adfd966fef1e4315c043b9f8717244877fa0e6b07214aedb",
+        "masks/electrode_G2.png": "2e14a8a47d94c07ddc9940b9df7a9c9af288ad7f03abd3f8f820d1f5171059ef",
+        "masks/electrode_G3.png": "0ceb23f7a81219e45ff7f39c2f4896adb5c26c165da85090be3ce83ed13f3dc6",
+        "masks/electrode_P1.png": "a7c4ef25fc9f1272b0920e6a583ca057628897c499b5e1b26d928c1afe0296c5",
+        "masks/electrode_P2.png": "7601a019d05f09daf4821a3112c6422809c17737cf15f5c083c264b1e78f9a3a",
+        "masks/electrode_P3.png": "7407321c3b00fa7302a614b76e298ab08c791a400a5b505f3905f4337863d206",
+        "masks/layer_M1.png": "c243445dab954917ad7ebb51858535e038fc546e415bf03d15c0903efb93e44e",
+        "masks/layer_M2.png": "f9c24d08edfc093842ed72d35d764fd6e83d83a85e0cf52a80bfbad7aa7e3f2a",
+        "masks/layer_M3.png": "5985e3912699d7d43a62bde765ab417da02ab62ab1285a70709690cd8412fcfc",
+        "masks/terminal_D1_OPEN_a.png": "cc0f3fbe8d8e1b71023d096e9b477e1f78dc35e7fbc4df803d5f235abf4b7571",
+        "masks/terminal_D1_OPEN_b.png": "06d596b599ca3755b0d8b6b58ceeac871f138deb87718fdf2529ea5aceaf4a82",
+        "masks/terminal_D2_OPEN_a.png": "ebcc8a11ea0792bea98554ea36eedb4514e648e1da73fb0bc261819518585f40",
+        "masks/terminal_D2_OPEN_b.png": "11ff071d317f0318966c0bf21b867fa41bb7daafb336273ca7d1af4ab86879c7",
+        "masks/terminal_G1_OPEN_a.png": "350cc44404d4c10c591d63d3167baecfd57bb4118fe60f2aa22ec23081caa218",
+        "masks/terminal_G1_OPEN_b.png": "7ec2389e0b78fa1e8ffefae7ada18b0447881e7bccbd499ebde5b1420e7d1ea9"
+      }
+    },
+    "mode_contribution": [
+      {
+        "report_mode": "lateral short",
+        "row_count": 90,
+        "nonzero_row_count": 11,
+        "raw_ca_sum_um2": 645.0,
+        "allocated_ca_sum_um2": 597.6875,
+        "unique_ca_sum_um2": 563.75,
+        "allocated_ca_share": 0.034773533860833136,
+        "mode_union_ca_sum_um2": 645.0
+      },
+      {
+        "report_mode": "vertical short",
+        "row_count": 150,
+        "nonzero_row_count": 44,
+        "raw_ca_sum_um2": 11590.0,
+        "allocated_ca_sum_um2": 10528.5625,
+        "unique_ca_sum_um2": 9542.75,
+        "allocated_ca_share": 0.612553089364673,
+        "mode_union_ca_sum_um2": 10876.0
+      },
+      {
+        "report_mode": "open",
+        "row_count": 35,
+        "nonzero_row_count": 21,
+        "raw_ca_sum_um2": 6393.0,
+        "allocated_ca_sum_um2": 6061.75,
+        "unique_ca_sum_um2": 5748.25,
+        "allocated_ca_share": 0.35267337677449384,
+        "mode_union_ca_sum_um2": 6393.0
+      }
+    ],
+    "mode_contribution_by_particle_size": [
+      {
+        "particle_size_um": 2.0,
+        "report_mode": "lateral short",
+        "allocated_ca_um2": 0.0,
+        "allocated_ca_share": 0.0
+      },
+      {
+        "particle_size_um": 2.0,
+        "report_mode": "open",
+        "allocated_ca_um2": 0.0,
+        "allocated_ca_share": 0.0
+      },
+      {
+        "particle_size_um": 2.0,
+        "report_mode": "vertical short",
+        "allocated_ca_um2": 339.25,
+        "allocated_ca_share": 1.0
+      },
+      {
+        "particle_size_um": 4.0,
+        "report_mode": "lateral short",
+        "allocated_ca_um2": 36.25,
+        "allocated_ca_share": 0.021017538773735325
+      },
+      {
+        "particle_size_um": 4.0,
+        "report_mode": "open",
+        "allocated_ca_um2": 0.0,
+        "allocated_ca_share": 0.0
+      },
+      {
+        "particle_size_um": 4.0,
+        "report_mode": "vertical short",
+        "allocated_ca_um2": 1688.5,
+        "allocated_ca_share": 0.9789824612262646
+      },
+      {
+        "particle_size_um": 6.0,
+        "report_mode": "lateral short",
+        "allocated_ca_um2": 103.125,
+        "allocated_ca_share": 0.031235801908223535
+      },
+      {
+        "particle_size_um": 6.0,
+        "report_mode": "open",
+        "allocated_ca_um2": 975.5,
+        "allocated_ca_share": 0.2954717552627594
+      },
+      {
+        "particle_size_um": 6.0,
+        "report_mode": "vertical short",
+        "allocated_ca_um2": 2222.875,
+        "allocated_ca_share": 0.6732924428290171
+      },
+      {
+        "particle_size_um": 8.0,
+        "report_mode": "lateral short",
+        "allocated_ca_um2": 188.625,
+        "allocated_ca_share": 0.03703249239226465
+      },
+      {
+        "particle_size_um": 8.0,
+        "report_mode": "open",
+        "allocated_ca_um2": 2019.25,
+        "allocated_ca_share": 0.3964366349268676
+      },
+      {
+        "particle_size_um": 8.0,
+        "report_mode": "vertical short",
+        "allocated_ca_um2": 2885.625,
+        "allocated_ca_share": 0.5665308726808678
+      },
+      {
+        "particle_size_um": 10.0,
+        "report_mode": "lateral short",
+        "allocated_ca_um2": 269.6875,
+        "allocated_ca_share": 0.04007839203447763
+      },
+      {
+        "particle_size_um": 10.0,
+        "report_mode": "open",
+        "allocated_ca_um2": 3067.0,
+        "allocated_ca_share": 0.45578837865953337
+      },
+      {
+        "particle_size_um": 10.0,
+        "report_mode": "vertical short",
+        "allocated_ca_um2": 3392.3125,
+        "allocated_ca_share": 0.504133229305989
+      }
+    ],
+    "allocated_ca_total_um2": 17188.0,
+    "any_union_ca_total_um2": 17188.0,
+    "allocation_minus_union_um2": 0.0,
+    "allocation_matches_union": true,
+    "share_basis": "combined run ca_allocated_nominal_um2; overlapping failure pixels are split 1/k"
+  }
+}

@@ -1,0 +1,42 @@
+{
+  "shape_yx": [
+    200,
+    200
+  ],
+  "electrode_count": 10,
+  "pair_count": 16,
+  "source_steps": [
+    "S_M1",
+    "S_M2",
+    "S_PLN"
+  ],
+  "particle_sizes_um": [
+    2.0,
+    4.0,
+    6.0,
+    8.0,
+    10.0
+  ],
+  "expected_positive_s_m1_d10": {
+    "G1__D1": 616,
+    "G2__D1": 1446,
+    "G2__D3": 786,
+    "G3__D2": 1304,
+    "D1__P1": 2735,
+    "D2__P3": 25,
+    "D3__P2": 2014,
+    "D4__P3": 2549
+  },
+  "negative_controls_s_m1_d10": {
+    "G1__D4": 0,
+    "G3__D3": 0
+  },
+  "max_simultaneous_pairs": 4,
+  "monotonic_violations": [],
+  "union_mismatches": [],
+  "ca_max_error_um2": 0.0,
+  "legacy_difference_pixels": 2911,
+  "legacy_unexplained_pixels": 0,
+  "external_existing_sim_compared": false,
+  "external_comparison_reason": "기존 현장 sim 실행 파일과 동일 입력 변환기가 저장소에 없어 내부 legacy/EDT만 대조"
+}

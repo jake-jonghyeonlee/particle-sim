@@ -1,0 +1,122 @@
+{
+  "optimizations": [
+    "nominal run reuses binary open result by open_path, diameter and contact margin while geometry is identical",
+    "connectivity labeling is restricted to the tight electrode bounding box while candidate coordinates stay global"
+  ],
+  "probability_cache_policy": "no unbounded scenario open-result cache; bounded/disk reuse remains future work",
+  "open_connectivity_evaluations": {
+    "baseline": 35,
+    "after_source_step_cache": 15
+  },
+  "electrode_bbox_pixels": {
+    "full_roi": 40000,
+    "G1_OPEN": 7081,
+    "D1_OPEN": 4875,
+    "D2_OPEN": 4900
+  },
+  "timing": {
+    "lateral_short": {
+      "baseline_median_seconds": 1.4435234579723328,
+      "after_source_step_cache_median_seconds": 1.4355761660262942,
+      "after_electrode_bbox_median_seconds": 1.4468529170844704,
+      "total_speedup": 0.9976988268311013,
+      "total_reduction_fraction": -0.0023064807805854848,
+      "bbox_incremental_speedup": 0.9922060142223027,
+      "final_peak_rss_bytes": 197246976
+    },
+    "vertical_short": {
+      "baseline_median_seconds": 1.7850303330924362,
+      "after_source_step_cache_median_seconds": 1.7597763750236481,
+      "after_electrode_bbox_median_seconds": 1.7609944159630686,
+      "total_speedup": 1.013649059253957,
+      "total_reduction_fraction": 0.013465270972581767,
+      "bbox_incremental_speedup": 0.9993083220887136,
+      "final_peak_rss_bytes": 209436672
+    },
+    "open": {
+      "baseline_median_seconds": 16.52275133295916,
+      "after_source_step_cache_median_seconds": 7.545280166901648,
+      "after_electrode_bbox_median_seconds": 3.1351297500077635,
+      "total_speedup": 5.270196977626921,
+      "total_reduction_fraction": 0.8102537714918043,
+      "bbox_incremental_speedup": 2.4066883250630897,
+      "final_peak_rss_bytes": 193658880
+    },
+    "combined": {
+      "baseline_median_seconds": 17.86213875003159,
+      "after_source_step_cache_median_seconds": 8.810162541922182,
+      "after_electrode_bbox_median_seconds": 4.422844874905422,
+      "total_speedup": 4.038608464741498,
+      "total_reduction_fraction": 0.7523899608663828,
+      "bbox_incremental_speedup": 1.991967340276789,
+      "final_peak_rss_bytes": 222265344
+    }
+  },
+  "equivalence": {
+    "tables": {
+      "ca.parquet": {
+        "rows": 285,
+        "equal_except_run_id": true
+      },
+      "ca_union.parquet": {
+        "rows": 60,
+        "equal_except_run_id": true
+      }
+    },
+    "zarr": {
+      "legacy_failure": {
+        "shape": [
+          3,
+          5,
+          19,
+          200,
+          200
+        ],
+        "equal": true
+      },
+      "nominal_failure": {
+        "shape": [
+          3,
+          5,
+          19,
+          200,
+          200
+        ],
+        "equal": true
+      },
+      "pair_margin_um": {
+        "shape": [
+          3,
+          5,
+          19,
+          200,
+          200
+        ],
+        "equal": true
+      },
+      "union_failure": {
+        "shape": [
+          3,
+          5,
+          4,
+          200,
+          200
+        ],
+        "equal": true
+      },
+      "union_pair_count": {
+        "shape": [
+          3,
+          5,
+          4,
+          200,
+          200
+        ],
+        "equal": true
+      }
+    },
+    "legacy_csv_equal": true,
+    "hotspot_directory_sha256_before": "c9d7a12c9cd5f73c69d0156235701b0784bd969a762fff8164571d96f78bb2ed",
+    "hotspot_directory_sha256_after": "c9d7a12c9cd5f73c69d0156235701b0784bd969a762fff8164571d96f78bb2ed"
+  }
+}

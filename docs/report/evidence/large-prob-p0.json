@@ -1,0 +1,12 @@
+{
+  "date": "2026-09-19",
+  "shape_yx": [1000, 1000],
+  "scenario_count": 64,
+  "wall_seconds": 107.3249,
+  "peak_rss_bytes": 636846080,
+  "scenario_mask_storage": "packed_temp",
+  "estimated_eager_mask_bytes": 448000000,
+  "previous_wall_seconds": 102.254,
+  "previous_peak_rss_bytes": 1072398336,
+  "interpretation": "P0 adaptive mask storage: about 5% more wall time and 41% less peak RSS"
+}

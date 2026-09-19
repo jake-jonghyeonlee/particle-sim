@@ -1,0 +1,28 @@
+/* Match screen and print content widths; reserve a separate footer band. */
+.page { width:178mm; height:260mm; display:flow-root; }
+header { margin-bottom:5mm; }
+h1 { margin-bottom:4mm; }
+h2 { margin-top:4mm; margin-bottom:2mm; }
+table { margin:2.5mm 0 3mm; }
+td,th { padding:1.8mm 2mm; }
+figure { margin:2.5mm 0 3mm; }
+figure.half img { height:60mm; }
+.note { margin:3mm 0; padding:2.5mm 3mm; }
+.source { margin-top:3mm; }
+pre { font-size:8pt; line-height:1.4; }
+/* Dense evidence sections retain readable type, with tighter vertical spacing. */
+.page:nth-of-type(8), .page:nth-of-type(12), .page:nth-of-type(17) { font-size:9.5pt; }
+.page:nth-of-type(8) table, .page:nth-of-type(12) table, .page:nth-of-type(17) table { font-size:8.5pt; }
+.page:nth-of-type(10) { font-size:9pt; }
+.page:nth-of-type(10) table { font-size:8pt; margin:2mm 0; }
+.page:nth-of-type(10) td, .page:nth-of-type(10) th { padding:1.2mm 1.6mm; }
+.page:nth-of-type(10) figure { margin:1.5mm 0 2mm; }
+.page:nth-of-type(10) figure.half img { height:48mm; }
+.page:nth-of-type(10) .note { margin:2mm 0; padding:2mm 3mm; }
+.page:nth-of-type(17) { font-size:9pt; }
+.page:nth-of-type(17) table { font-size:8pt; margin:2mm 0; }
+.page:nth-of-type(17) td, .page:nth-of-type(17) th { padding:1.3mm 1.7mm; }
+.page:nth-of-type(17) h2 { margin:3mm 0 1.5mm; }
+@media screen {
+ .page { width:210mm; height:296mm; padding:18mm 16mm; }
+}

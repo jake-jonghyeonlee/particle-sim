@@ -13,7 +13,7 @@ from particle_sim.aggregation.fab_weighting import (
     match_sizes,
 )
 from particle_sim.errors import InputContractError
-from particle_sim.io.fab import FAB_COLUMNS, fab_density_for, load_fab_table
+from particle_sim.io.fab import FAB_COLUMNS, FAB_MEAN_COLUMNS, fab_density_for, load_fab_table
 
 
 def _fab_rows(**overrides) -> list[dict]:
@@ -82,6 +82,8 @@ def test_load_fab_table_fills_and_checks_density(tmp_path: Path) -> None:
         ({"particle_count": -1}, "particle_count"),
         ({"inspection_area_mm2": 0.0}, "inspection_area_mm2"),
         ({"measurement_period": ""}, "measurement_period"),
+        ({"particle_type": "  "}, "particle_type"),
+        ({"fab_id": ""}, "fab_id"),
     ],
 )
 def test_fab_table_rejects_bad_rows(tmp_path: Path, mutation: dict, match: str) -> None:
@@ -266,3 +268,72 @@ def test_non_finite_numbers_are_rejected(tmp_path: Path) -> None:
     with pytest.raises(InputContractError, match="inspection_area_mm2"):
         load_fab_table(_write_fab(tmp_path, infinite, "inf.csv"),
                        bin_method="piecewise_constant")
+
+
+def test_mean_particle_count_contract(tmp_path: Path) -> None:
+    frame = pd.DataFrame(
+        [
+            {
+                "fab_id": "FAB_A",
+                "product_family": "F1",
+                "fab_distribution_layer": "MASK1",
+                "size_bin_left_um": 1.0,
+                "size_bin_right_um": 3.0,
+                "size_representative_um": 2.0,
+                "mean_particle_count": 2.5,
+                "inspection_area_per_sample_mm2": 50.0,
+                "measurement_period": "2026-09",
+                "mean_density_per_mm2": np.nan,
+                "particle_type": "unknown",
+            }
+        ],
+        columns=list(FAB_MEAN_COLUMNS),
+    )
+    path = tmp_path / "mean.csv"
+    frame.to_csv(path, index=False)
+    table = load_fab_table(path, bin_method="exact_point")
+    assert table.input_semantics == "mean_per_sample"
+    assert table.frame["source_step"].tolist() == ["MASK1"]
+    assert table.frame["density_per_mm2"].tolist() == pytest.approx([0.05])
+    with pytest.raises(InputContractError, match="exact_point"):
+        load = load_fab_table(path, bin_method="piecewise_constant")
+        apply_fab_weighting(
+            _ca_frame(sizes=(2.0,)),
+            load,
+            weighting_mode="actual",
+            fab_id="FAB_A",
+            product_family="F1",
+            run_id="R",
+            product_id="P",
+        )
+
+
+def test_mean_particle_count_optional_provenance(tmp_path: Path) -> None:
+    row = {
+        "fab_id": "FAB_A",
+        "product_family": "F1",
+        "fab_distribution_layer": "MASK1",
+        "size_bin_left_um": 1.0,
+        "size_bin_right_um": 3.0,
+        "size_representative_um": 2.0,
+        "mean_particle_count": 2.5,
+        "inspection_area_per_sample_mm2": 50.0,
+        "measurement_period": "2026-09",
+        "mean_density_per_mm2": 0.05,
+        "particle_type": "conductive",
+        "sample_count": 12,
+        "source_id": "FAB-MEASURE-12",
+        "source_hash": "abc123",
+    }
+    path = tmp_path / "mean-provenance.csv"
+    pd.DataFrame([row]).to_csv(path, index=False)
+    table = load_fab_table(path, bin_method="exact_point")
+    loaded = table.frame.iloc[0]
+    assert loaded["sample_count"] == 12
+    assert loaded["source_id"] == "FAB-MEASURE-12"
+    assert loaded["source_hash"] == "abc123"
+
+    row["sample_count"] = 1.5
+    pd.DataFrame([row]).to_csv(path, index=False)
+    with pytest.raises(InputContractError, match="sample_count"):
+        load_fab_table(path, bin_method="exact_point")

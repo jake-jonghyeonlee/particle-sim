@@ -1,0 +1,61 @@
+{
+  "comparison": "same 200x200 complex geometry centered in 200x200 and 1000x1000 canvases",
+  "interpretation": "ROI/output scaling check; not a long-wire or tiled-electrode benchmark",
+  "absolute_ca_equal": true,
+  "absolute_union_ca_equal": true,
+  "modes": {
+    "lateral_short": {
+      "tat_200_seconds": 1.4468529170844704,
+      "tat_padded_1000_seconds": 5.67820645798929,
+      "tat_ratio": 3.924522244756814,
+      "rss_200_bytes": 197246976,
+      "rss_padded_1000_bytes": 534085632,
+      "rss_ratio": 2.707699975080987,
+      "output_200_bytes": 5282366,
+      "output_padded_1000_bytes": 243697708,
+      "output_ratio": 46.134195926598046
+    },
+    "vertical_short": {
+      "tat_200_seconds": 1.7609944159630686,
+      "tat_padded_1000_seconds": 8.522156458115205,
+      "tat_ratio": 4.839400046282674,
+      "rss_200_bytes": 209436672,
+      "rss_padded_1000_bytes": 650346496,
+      "rss_ratio": 3.1052178674802473,
+      "output_200_bytes": 8779596,
+      "output_padded_1000_bytes": 377768519,
+      "output_ratio": 43.0280070973653
+    },
+    "open": {
+      "tat_200_seconds": 3.1351297500077635,
+      "tat_padded_1000_seconds": 4.6692167080473155,
+      "tat_ratio": 1.4893216805574803,
+      "rss_200_bytes": 193658880,
+      "rss_padded_1000_bytes": 333381632,
+      "rss_ratio": 1.7214890016920474,
+      "output_200_bytes": 66263,
+      "output_padded_1000_bytes": 70739,
+      "output_ratio": 1.067549009251015
+    },
+    "combined": {
+      "tat_200_seconds": 4.422844874905422,
+      "tat_padded_1000_seconds": 16.385156292002648,
+      "tat_ratio": 3.704664476244609,
+      "rss_200_bytes": 222265344,
+      "rss_padded_1000_bytes": 843644928,
+      "rss_ratio": 3.7956656346749225,
+      "output_200_bytes": 14031190,
+      "output_padded_1000_bytes": 621437788,
+      "output_ratio": 44.2897422100335
+    }
+  },
+  "rejected_chunk_1024": {
+    "reason": "smaller output but slower TAT and higher RSS",
+    "combined_output_bytes_512": 621437788,
+    "combined_output_bytes_1024": 502116265,
+    "combined_wall_seconds_512": 16.385156292002648,
+    "combined_wall_seconds_1024_single_run": 17.672731584170833,
+    "combined_peak_rss_bytes_512": 843644928,
+    "combined_peak_rss_bytes_1024_single_run": 919994368
+  }
+}

@@ -17,6 +17,7 @@ from particle_sim.schema import (
     ProductManifest,
     todo_physics_warnings,
 )
+from particle_sim.validation.electrode_pairs import audit_electrode_pairs
 
 
 def base_manifest() -> dict:
@@ -277,3 +278,46 @@ def test_missing_manifest_file(tmp_path: Path) -> None:
     with pytest.raises(InputContractError) as exc:
         load_manifest(tmp_path / "missing.yaml")
     assert "file=" in str(exc.value)
+
+
+def test_pair_audit_lists_declared_and_unresolved() -> None:
+    manifest = ProductManifest.model_validate(base_manifest())
+    rows = audit_electrode_pairs(manifest)
+    status = {(row.electrode_a, row.electrode_b): row.status for row in rows}
+    assert status[("E1", "E2")] == "declared"
+    assert status[("E1", "E3")] == "declared"
+    assert status[("E2", "E3")] == "unresolved"
+
+
+def test_schema_v2_requires_pair_resolution(tmp_path: Path) -> None:
+    data = base_manifest()
+    data["schema_version"] = "2.0"
+    path = write_yaml(tmp_path, data)
+    with pytest.raises(InputContractError, match="정하지 않은 전극 조합"):
+        load_manifest(path)
+    data["excluded_electrode_pairs"] = [
+        {"electrode_a": "E2", "electrode_b": "E3", "reason": "검토 후 제외"}
+    ]
+    path = write_yaml(tmp_path, data, "resolved.yaml")
+    assert load_manifest(path).schema_version == "2.0"
+
+
+def test_duplicate_physical_pair_and_blank_exclusion_reason_are_rejected() -> None:
+    data = base_manifest()
+    data["electrode_pairs"].append(
+        {
+            "pair_id": "P1_REVERSED",
+            "electrode_a": "E2",
+            "electrode_b": "E1",
+            "failure_mode": "lateral_short",
+        }
+    )
+    with pytest.raises(ValidationError, match="중복 선언"):
+        ProductManifest.model_validate(data)
+
+    data = base_manifest()
+    data["excluded_electrode_pairs"] = [
+        {"electrode_a": "E2", "electrode_b": "E3", "reason": "   "}
+    ]
+    with pytest.raises(ValidationError, match="reason"):
+        ProductManifest.model_validate(data)

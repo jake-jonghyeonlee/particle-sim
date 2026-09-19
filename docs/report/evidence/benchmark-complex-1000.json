@@ -1,0 +1,151 @@
+{
+  "label": "complex-1000",
+  "manifest": "/Users/jonghyeonlee/git/particle-sim/docs/report/work/complex-large-case/manifest.yaml",
+  "manifest_sha256": "bf8cca85f1e9d2b171a0d828b539da0002c7d5c4b7f5c36703ff9008abdce437",
+  "python": "3.12.13 (main, Mar  3 2026, 12:39:30) [Clang 21.0.0 (clang-2100.0.123.102)]",
+  "platform": "macOS-26.5.2-arm64-arm-64bit",
+  "warmup": {
+    "wall_seconds": 13.2622350838501,
+    "peak_rss_bytes": 743997440,
+    "output_bytes": 65157735,
+    "config_hash": "37e4e395723e8ab4ae902336d30a3c196712c831cd35573f0316e17004d68883",
+    "input_hashes": {
+      "manifest": "bf8cca85f1e9d2b171a0d828b539da0002c7d5c4b7f5c36703ff9008abdce437",
+      "masks/electrode_D1.png": "5da9a49464533575bd175e01f243feb70880d1b942b934b04a71303b6bf07263",
+      "masks/electrode_D2.png": "d41a9d6c938cfb6c9949950db291543fa8866e9f69c967b9118e4e47e5e860a5",
+      "masks/electrode_D3.png": "b19da9d7dd9692735d93b4aa2d41b2319c38f318991d9a44b5b564d014a9d6e1",
+      "masks/electrode_D4.png": "df630f05e5fc6aa8cbe8ab73a4fe45b75c4c69d0aaafd7e2fe3a90972e25895b",
+      "masks/electrode_G1.png": "1368c1e9623dc60349708a634426a290bd44210bd74a4bee1f1fc8e3606a040f",
+      "masks/electrode_G2.png": "51599135e552ffedeee50742fb947a14d356baad98c21c2bab3544883e5e7171",
+      "masks/electrode_G3.png": "987ed9850072897beb3531b07aa02db256767fd6068b6b2cab3b67899b0f30ad",
+      "masks/electrode_P1.png": "4cabcd84129768cf5c185820aedf688d4ee1dbe9343268974fefe1a309baeab3",
+      "masks/electrode_P2.png": "616fc01adc744b204b03a2fd82c8b1852baea5393854dde3533474db39da9f07",
+      "masks/electrode_P3.png": "809b8ad5678dce53a024bcfe5e85102703d9fb66e148403074fe4487b206801c",
+      "masks/layer_M1.png": "73a92b8d56bc37eccb2fe779a383841cdd2a7ca8e7ff12112ae0722bfc2e6d0b",
+      "masks/layer_M2.png": "963909798ce640b92fac8394bd14743d6fd7d64d83ccbad5edbd042805fb04ae",
+      "masks/layer_M3.png": "1304f4f6ed0eb75569a81fe3dbe2ecfa14ca94576a4e4818b449936a67ce5b92"
+    }
+  },
+  "runs": [
+    {
+      "wall_seconds": 13.437346375081688,
+      "peak_rss_bytes": 745127936,
+      "output_bytes": 65157735,
+      "config_hash": "37e4e395723e8ab4ae902336d30a3c196712c831cd35573f0316e17004d68883",
+      "input_hashes": {
+        "manifest": "bf8cca85f1e9d2b171a0d828b539da0002c7d5c4b7f5c36703ff9008abdce437",
+        "masks/electrode_D1.png": "5da9a49464533575bd175e01f243feb70880d1b942b934b04a71303b6bf07263",
+        "masks/electrode_D2.png": "d41a9d6c938cfb6c9949950db291543fa8866e9f69c967b9118e4e47e5e860a5",
+        "masks/electrode_D3.png": "b19da9d7dd9692735d93b4aa2d41b2319c38f318991d9a44b5b564d014a9d6e1",
+        "masks/electrode_D4.png": "df630f05e5fc6aa8cbe8ab73a4fe45b75c4c69d0aaafd7e2fe3a90972e25895b",
+        "masks/electrode_G1.png": "1368c1e9623dc60349708a634426a290bd44210bd74a4bee1f1fc8e3606a040f",
+        "masks/electrode_G2.png": "51599135e552ffedeee50742fb947a14d356baad98c21c2bab3544883e5e7171",
+        "masks/electrode_G3.png": "987ed9850072897beb3531b07aa02db256767fd6068b6b2cab3b67899b0f30ad",
+        "masks/electrode_P1.png": "4cabcd84129768cf5c185820aedf688d4ee1dbe9343268974fefe1a309baeab3",
+        "masks/electrode_P2.png": "616fc01adc744b204b03a2fd82c8b1852baea5393854dde3533474db39da9f07",
+        "masks/electrode_P3.png": "809b8ad5678dce53a024bcfe5e85102703d9fb66e148403074fe4487b206801c",
+        "masks/layer_M1.png": "73a92b8d56bc37eccb2fe779a383841cdd2a7ca8e7ff12112ae0722bfc2e6d0b",
+        "masks/layer_M2.png": "963909798ce640b92fac8394bd14743d6fd7d64d83ccbad5edbd042805fb04ae",
+        "masks/layer_M3.png": "1304f4f6ed0eb75569a81fe3dbe2ecfa14ca94576a4e4818b449936a67ce5b92"
+      }
+    },
+    {
+      "wall_seconds": 13.475543707842007,
+      "peak_rss_bytes": 741736448,
+      "output_bytes": 65157735,
+      "config_hash": "37e4e395723e8ab4ae902336d30a3c196712c831cd35573f0316e17004d68883",
+      "input_hashes": {
+        "manifest": "bf8cca85f1e9d2b171a0d828b539da0002c7d5c4b7f5c36703ff9008abdce437",
+        "masks/electrode_D1.png": "5da9a49464533575bd175e01f243feb70880d1b942b934b04a71303b6bf07263",
+        "masks/electrode_D2.png": "d41a9d6c938cfb6c9949950db291543fa8866e9f69c967b9118e4e47e5e860a5",
+        "masks/electrode_D3.png": "b19da9d7dd9692735d93b4aa2d41b2319c38f318991d9a44b5b564d014a9d6e1",
+        "masks/electrode_D4.png": "df630f05e5fc6aa8cbe8ab73a4fe45b75c4c69d0aaafd7e2fe3a90972e25895b",
+        "masks/electrode_G1.png": "1368c1e9623dc60349708a634426a290bd44210bd74a4bee1f1fc8e3606a040f",
+        "masks/electrode_G2.png": "51599135e552ffedeee50742fb947a14d356baad98c21c2bab3544883e5e7171",
+        "masks/electrode_G3.png": "987ed9850072897beb3531b07aa02db256767fd6068b6b2cab3b67899b0f30ad",
+        "masks/electrode_P1.png": "4cabcd84129768cf5c185820aedf688d4ee1dbe9343268974fefe1a309baeab3",
+        "masks/electrode_P2.png": "616fc01adc744b204b03a2fd82c8b1852baea5393854dde3533474db39da9f07",
+        "masks/electrode_P3.png": "809b8ad5678dce53a024bcfe5e85102703d9fb66e148403074fe4487b206801c",
+        "masks/layer_M1.png": "73a92b8d56bc37eccb2fe779a383841cdd2a7ca8e7ff12112ae0722bfc2e6d0b",
+        "masks/layer_M2.png": "963909798ce640b92fac8394bd14743d6fd7d64d83ccbad5edbd042805fb04ae",
+        "masks/layer_M3.png": "1304f4f6ed0eb75569a81fe3dbe2ecfa14ca94576a4e4818b449936a67ce5b92"
+      }
+    },
+    {
+      "wall_seconds": 13.518698083003983,
+      "peak_rss_bytes": 742785024,
+      "output_bytes": 65157735,
+      "config_hash": "37e4e395723e8ab4ae902336d30a3c196712c831cd35573f0316e17004d68883",
+      "input_hashes": {
+        "manifest": "bf8cca85f1e9d2b171a0d828b539da0002c7d5c4b7f5c36703ff9008abdce437",
+        "masks/electrode_D1.png": "5da9a49464533575bd175e01f243feb70880d1b942b934b04a71303b6bf07263",
+        "masks/electrode_D2.png": "d41a9d6c938cfb6c9949950db291543fa8866e9f69c967b9118e4e47e5e860a5",
+        "masks/electrode_D3.png": "b19da9d7dd9692735d93b4aa2d41b2319c38f318991d9a44b5b564d014a9d6e1",
+        "masks/electrode_D4.png": "df630f05e5fc6aa8cbe8ab73a4fe45b75c4c69d0aaafd7e2fe3a90972e25895b",
+        "masks/electrode_G1.png": "1368c1e9623dc60349708a634426a290bd44210bd74a4bee1f1fc8e3606a040f",
+        "masks/electrode_G2.png": "51599135e552ffedeee50742fb947a14d356baad98c21c2bab3544883e5e7171",
+        "masks/electrode_G3.png": "987ed9850072897beb3531b07aa02db256767fd6068b6b2cab3b67899b0f30ad",
+        "masks/electrode_P1.png": "4cabcd84129768cf5c185820aedf688d4ee1dbe9343268974fefe1a309baeab3",
+        "masks/electrode_P2.png": "616fc01adc744b204b03a2fd82c8b1852baea5393854dde3533474db39da9f07",
+        "masks/electrode_P3.png": "809b8ad5678dce53a024bcfe5e85102703d9fb66e148403074fe4487b206801c",
+        "masks/layer_M1.png": "73a92b8d56bc37eccb2fe779a383841cdd2a7ca8e7ff12112ae0722bfc2e6d0b",
+        "masks/layer_M2.png": "963909798ce640b92fac8394bd14743d6fd7d64d83ccbad5edbd042805fb04ae",
+        "masks/layer_M3.png": "1304f4f6ed0eb75569a81fe3dbe2ecfa14ca94576a4e4818b449936a67ce5b92"
+      }
+    },
+    {
+      "wall_seconds": 13.484009665902704,
+      "peak_rss_bytes": 740327424,
+      "output_bytes": 65157735,
+      "config_hash": "37e4e395723e8ab4ae902336d30a3c196712c831cd35573f0316e17004d68883",
+      "input_hashes": {
+        "manifest": "bf8cca85f1e9d2b171a0d828b539da0002c7d5c4b7f5c36703ff9008abdce437",
+        "masks/electrode_D1.png": "5da9a49464533575bd175e01f243feb70880d1b942b934b04a71303b6bf07263",
+        "masks/electrode_D2.png": "d41a9d6c938cfb6c9949950db291543fa8866e9f69c967b9118e4e47e5e860a5",
+        "masks/electrode_D3.png": "b19da9d7dd9692735d93b4aa2d41b2319c38f318991d9a44b5b564d014a9d6e1",
+        "masks/electrode_D4.png": "df630f05e5fc6aa8cbe8ab73a4fe45b75c4c69d0aaafd7e2fe3a90972e25895b",
+        "masks/electrode_G1.png": "1368c1e9623dc60349708a634426a290bd44210bd74a4bee1f1fc8e3606a040f",
+        "masks/electrode_G2.png": "51599135e552ffedeee50742fb947a14d356baad98c21c2bab3544883e5e7171",
+        "masks/electrode_G3.png": "987ed9850072897beb3531b07aa02db256767fd6068b6b2cab3b67899b0f30ad",
+        "masks/electrode_P1.png": "4cabcd84129768cf5c185820aedf688d4ee1dbe9343268974fefe1a309baeab3",
+        "masks/electrode_P2.png": "616fc01adc744b204b03a2fd82c8b1852baea5393854dde3533474db39da9f07",
+        "masks/electrode_P3.png": "809b8ad5678dce53a024bcfe5e85102703d9fb66e148403074fe4487b206801c",
+        "masks/layer_M1.png": "73a92b8d56bc37eccb2fe779a383841cdd2a7ca8e7ff12112ae0722bfc2e6d0b",
+        "masks/layer_M2.png": "963909798ce640b92fac8394bd14743d6fd7d64d83ccbad5edbd042805fb04ae",
+        "masks/layer_M3.png": "1304f4f6ed0eb75569a81fe3dbe2ecfa14ca94576a4e4818b449936a67ce5b92"
+      }
+    },
+    {
+      "wall_seconds": 13.388801334192976,
+      "peak_rss_bytes": 742883328,
+      "output_bytes": 65157735,
+      "config_hash": "37e4e395723e8ab4ae902336d30a3c196712c831cd35573f0316e17004d68883",
+      "input_hashes": {
+        "manifest": "bf8cca85f1e9d2b171a0d828b539da0002c7d5c4b7f5c36703ff9008abdce437",
+        "masks/electrode_D1.png": "5da9a49464533575bd175e01f243feb70880d1b942b934b04a71303b6bf07263",
+        "masks/electrode_D2.png": "d41a9d6c938cfb6c9949950db291543fa8866e9f69c967b9118e4e47e5e860a5",
+        "masks/electrode_D3.png": "b19da9d7dd9692735d93b4aa2d41b2319c38f318991d9a44b5b564d014a9d6e1",
+        "masks/electrode_D4.png": "df630f05e5fc6aa8cbe8ab73a4fe45b75c4c69d0aaafd7e2fe3a90972e25895b",
+        "masks/electrode_G1.png": "1368c1e9623dc60349708a634426a290bd44210bd74a4bee1f1fc8e3606a040f",
+        "masks/electrode_G2.png": "51599135e552ffedeee50742fb947a14d356baad98c21c2bab3544883e5e7171",
+        "masks/electrode_G3.png": "987ed9850072897beb3531b07aa02db256767fd6068b6b2cab3b67899b0f30ad",
+        "masks/electrode_P1.png": "4cabcd84129768cf5c185820aedf688d4ee1dbe9343268974fefe1a309baeab3",
+        "masks/electrode_P2.png": "616fc01adc744b204b03a2fd82c8b1852baea5393854dde3533474db39da9f07",
+        "masks/electrode_P3.png": "809b8ad5678dce53a024bcfe5e85102703d9fb66e148403074fe4487b206801c",
+        "masks/layer_M1.png": "73a92b8d56bc37eccb2fe779a383841cdd2a7ca8e7ff12112ae0722bfc2e6d0b",
+        "masks/layer_M2.png": "963909798ce640b92fac8394bd14743d6fd7d64d83ccbad5edbd042805fb04ae",
+        "masks/layer_M3.png": "1304f4f6ed0eb75569a81fe3dbe2ecfa14ca94576a4e4818b449936a67ce5b92"
+      }
+    }
+  ],
+  "summary": {
+    "repeats": 5,
+    "wall_median_seconds": 13.475543707842007,
+    "wall_min_seconds": 13.388801334192976,
+    "wall_max_seconds": 13.518698083003983,
+    "wall_mean_seconds": 13.460879833204672,
+    "wall_cv": 0.003295986943908773,
+    "peak_rss_max_bytes": 745127936,
+    "output_bytes_median": 65157735
+  }
+}

@@ -10,7 +10,11 @@ import pytest
 import zarr
 
 from particle_sim.aggregation.probability import ProbabilityAccumulator, probability_ca
-from particle_sim.config import load_manifest, load_scenario_config
+from particle_sim.config import (
+    load_manifest,
+    load_scenario_config,
+    validate_scenario_for_manifest,
+)
 from particle_sim.errors import InputContractError
 from particle_sim.geometry.transforms import (
     apply_scenario_to_masks,
@@ -227,6 +231,39 @@ def test_scenario_config_validation(tmp_path: Path) -> None:
         load_scenario_config(unknown)
 
 
+def test_scenario_layer_names_are_checked_against_manifest(tmp_path: Path) -> None:
+    manifest_path = write_case(build_case("parallel_lines"), tmp_path / "case")
+    manifest = load_manifest(manifest_path)
+    unknown_layer = _scenario_file(
+        tmp_path,
+        '''schema_version: "2.0"
+assumption_set: measured
+evidence: measured
+overlay_reference_layer: M1
+overlay_sign_convention: positive_x_right_positive_y_down
+overlay_um:
+  MISSING:
+    x: {mean: 0.0, sigma: 0.1, evidence: measured, source_id: X}
+    y: {mean: 0.0, sigma: 0.1, evidence: measured, source_id: Y}
+''',
+        "unknown-layer.yaml",
+    )
+    with pytest.raises(InputContractError, match="없는 layer"):
+        validate_scenario_for_manifest(
+            load_scenario_config(unknown_layer), manifest, scenario_path=unknown_layer
+        )
+
+    moving_reference = _scenario_file(
+        tmp_path,
+        unknown_layer.read_text(encoding="utf-8").replace("MISSING:", "M1:"),
+        "moving-reference.yaml",
+    )
+    with pytest.raises(InputContractError, match="기준 layer"):
+        validate_scenario_for_manifest(
+            load_scenario_config(moving_reference), manifest, scenario_path=moving_reference
+        )
+
+
 def test_center_offset_moves_x_and_y_independently() -> None:
     grid = GridSpec(shape_yx=(20, 20), pixel_size_y_um=1.0, pixel_size_x_um=0.5)
     mask = np.zeros((20, 20), dtype=bool)
@@ -287,6 +324,29 @@ def test_union_convergence_rows_are_written(tmp_path: Path) -> None:
     assert manifest["convergence_tolerance"] == 1.0
     assert manifest["convergence_not_met"] == []
     assert manifest["convergence_undecidable"] == 0
+
+
+def test_multiple_scramble_seeds_are_recorded(tmp_path: Path) -> None:
+    case = build_case("parallel_lines")
+    case.manifest["particle_sizes_um"] = [2.0]
+    case.manifest["particle_source_steps"] = case.manifest["particle_source_steps"][:1]
+    manifest_path = write_case(case, tmp_path / "case-multi-seed")
+    scenario_path = _scenario_file(tmp_path, NOMINAL_SCENARIO, "multi-seed.yaml")
+    result = run_probability(
+        manifest_path,
+        scenario_path,
+        tmp_path / "multi-seed-run",
+        sobol_exponent_m=2,
+        seed=3,
+        additional_seeds=[5],
+    )
+    assert result.scenario_count == 8
+    with result.convergence.open(encoding="utf-8") as handle:
+        rows = list(csv.DictReader(handle))
+    assert {int(row["scramble_seed"]) for row in rows} == {3, 5}
+    assert {int(row["scenario_count"]) for row in rows} == {4}
+    manifest = json.loads(result.run_manifest.read_text(encoding="utf-8"))
+    assert manifest["random_seeds"] == [3, 5]
 
 
 def test_non_finite_last_delta_is_not_converged() -> None:

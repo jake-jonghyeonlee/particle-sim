@@ -1,0 +1,64 @@
+{
+  "label": "contact-terminal-open-and-cno-pilot-200x200",
+  "purpose": "automatic contact/ROI terminals and CNO vs explicit terminal regions",
+  "python": "3.12.13",
+  "repeats": 5,
+  "tat_summary": {
+    "explicit_terminals": {
+      "repeats": 5,
+      "wall_median_seconds": 3.724000999936834,
+      "wall_min_seconds": 3.7118912080768496,
+      "wall_max_seconds": 3.7342742499895394,
+      "peak_rss_max_bytes": 224755712
+    },
+    "contact_terminals": {
+      "repeats": 5,
+      "wall_median_seconds": 3.888951333006844,
+      "wall_min_seconds": 3.862409417051822,
+      "wall_max_seconds": 3.920345125021413,
+      "peak_rss_max_bytes": 243482624
+    }
+  },
+  "open_equivalence": {
+    "G1_OPEN": {
+      "explicit_open_px": 10824,
+      "auto_open_px": 10272,
+      "auto_only_px": 0,
+      "explicit_only_px": 552,
+      "explicit_only_outside_cno_px": 0
+    },
+    "D1_OPEN": {
+      "explicit_open_px": 7616,
+      "auto_open_px": 7248,
+      "auto_only_px": 0,
+      "explicit_only_px": 368,
+      "explicit_only_outside_cno_px": 0
+    },
+    "D2_OPEN": {
+      "explicit_open_px": 7132,
+      "auto_open_px": 6764,
+      "auto_only_px": 0,
+      "explicit_only_px": 368,
+      "explicit_only_outside_cno_px": 0
+    }
+  },
+  "unit_counts": {
+    "electrode_pair": 16,
+    "open_electrode": 9,
+    "contact": 6
+  },
+  "classifications": {
+    "contact|not_applicable_source_step": 60,
+    "contact|cno_full_cover": 30,
+    "electrode_pair|potential_vertical_short": 150,
+    "electrode_pair|direct_geometric_contact": 90,
+    "open_electrode|insufficient_terminals": 70,
+    "open_electrode|open_auto_terminals": 35,
+    "open_electrode|not_applicable_source_step": 30
+  },
+  "cno_ca_um2_by_step": {
+    "S_M1": 0.0,
+    "S_M2": 46.0,
+    "S_PLN": 92.0
+  }
+}

@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
+import subprocess
 from datetime import datetime
 from pathlib import Path
 
@@ -11,21 +13,35 @@ import pandas as pd
 import tifffile
 import zarr
 
-SCHEMA_VERSION = "1.0"
+SCHEMA_VERSION = "2.0"
 
 CA_COLUMNS: tuple[str, ...] = (
     "schema_version", "run_id", "product_id", "design_version", "source_step",
-    "fab_distribution_layer", "particle_size_um", "pair_id", "electrode_a", "electrode_b",
-    "net_a", "net_b", "failure_mode", "classification", "ca_legacy_um2", "ca_nominal_um2",
+    "fab_distribution_layer", "particle_size_um", "failure_unit_id", "unit_kind", "pair_id",
+    "electrode_pair_id", "open_path_id", "contact_id", "electrode_a", "electrode_b",
+    "electrode_a_layer", "electrode_b_layer", "net_a", "net_b", "failure_mode",
+    "classification", "ca_legacy_um2",
+    "ca_nominal_um2", "ca_allocated_nominal_um2", "ca_unique_nominal_um2",
     "ca_nominal_mm2", "ca_nominal_normalized", "ca_mean_um2", "ca_p05_um2", "ca_p50_um2",
-    "ca_p95_um2", "scenario_count", "convergence_delta", "assumption_set", "simulator_version",
+    "ca_p95_um2", "ca_allocated_mean_um2", "ca_allocated_p05_um2",
+    "ca_allocated_p50_um2", "ca_allocated_p95_um2", "ca_unique_mean_um2",
+    "ca_unique_p05_um2", "ca_unique_p50_um2", "ca_unique_p95_um2", "scenario_count",
+    "convergence_delta", "assumption_set", "simulator_version",
 )
 UNION_CA_COLUMNS: tuple[str, ...] = (
     "schema_version", "run_id", "product_id", "design_version", "source_step",
-    "fab_distribution_layer", "particle_size_um", "failure_mode", "pair_ids",
+    "fab_distribution_layer", "particle_size_um", "failure_mode", "union_scope", "pair_ids",
+    "failure_unit_ids",
     "ca_union_legacy_um2", "ca_union_nominal_um2", "ca_union_nominal_normalized",
-    "ca_pair_sum_nominal_um2", "assumption_set", "simulator_version",
+    "ca_pair_sum_nominal_um2", "ca_union_mean_um2", "ca_union_p05_um2",
+    "ca_union_p50_um2", "ca_union_p95_um2", "ca_raw_unit_sum_mean_um2", "scenario_count",
+    "convergence_delta", "assumption_set", "simulator_version",
 )
+def _default_unit_kinds(modes: list[str]) -> list[str]:
+    """Kinds for callers that only know the failure modes (pairs and explicit open paths)."""
+    return ["open_path" if mode == "lateral_open" else "electrode_pair" for mode in modes]
+
+
 VALUE_SEMANTICS = "binary geometric contact risk (not failure probability)"
 PROBABILITY_SEMANTICS = (
     "process-variation-conditioned geometric contact risk in [0, 1] "
@@ -61,6 +77,7 @@ class HotspotStore:
         pair_modes: list[str],
         union_keys: list[str],
         shape_yx: tuple[int, int],
+        unit_kinds: list[str] | None = None,
     ) -> None:
         if len(pair_ids) != len(pair_modes):
             raise ValueError("pair_ids와 pair_modes의 길이가 다릅니다")
@@ -87,6 +104,10 @@ class HotspotStore:
         group.attrs["source_steps"] = list(source_steps)
         group.attrs["particle_sizes_um"] = [float(s) for s in particle_sizes_um]
         group.attrs["pair_ids"] = list(pair_ids)
+        group.attrs["failure_unit_ids"] = list(pair_ids)
+        group.attrs["unit_kinds"] = (
+            list(unit_kinds) if unit_kinds is not None else _default_unit_kinds(pair_modes)
+        )
         group.attrs["pair_modes"] = list(pair_modes)
         group.attrs["union_keys"] = list(union_keys)
         group.attrs["units"] = {"length": "um", "margin": "um"}
@@ -154,6 +175,7 @@ class ProbabilityStore:
         unit_modes: list[str],
         union_keys: list[str],
         shape_yx: tuple[int, int],
+        unit_kinds: list[str] | None = None,
     ) -> None:
         if len(unit_ids) != len(unit_modes):
             raise ValueError("unit_ids와 unit_modes의 길이가 다릅니다")
@@ -176,6 +198,10 @@ class ProbabilityStore:
         group.attrs["source_steps"] = list(source_steps)
         group.attrs["particle_sizes_um"] = [float(s) for s in particle_sizes_um]
         group.attrs["unit_ids"] = list(unit_ids)
+        group.attrs["failure_unit_ids"] = list(unit_ids)
+        group.attrs["unit_kinds"] = (
+            list(unit_kinds) if unit_kinds is not None else _default_unit_kinds(unit_modes)
+        )
         group.attrs["unit_modes"] = list(unit_modes)
         group.attrs["union_keys"] = list(union_keys)
         group.attrs["units"] = {"length": "um", "margin": "um"}
@@ -254,12 +280,15 @@ def build_run_manifest(
     """Reproducibility record stored next to every run."""
     from particle_sim import __version__
 
+    detected_commit, git_dirty = _git_identity()
     return {
         "schema_version": SCHEMA_VERSION,
         "run_id": run_id,
         "product_id": product_id,
         "design_version": design_version,
-        "git_commit": git_commit,
+        "git_commit": git_commit or detected_commit,
+        "git_dirty": git_dirty,
+        "build_id": f"particle-sim-{__version__}",
         "config_hash": config_hash,
         "input_hashes": dict(input_hashes),
         "particle_sizes_um": [float(s) for s in particle_sizes_um],
@@ -274,7 +303,61 @@ def build_run_manifest(
         "created_at": created_at.isoformat(),
         "units": {"length": "um", "area": "um2"},
         "value_semantics": VALUE_SEMANTICS,
+        "artifacts": [],
     }
+
+
+def _git_identity() -> tuple[str | None, bool | None]:
+    try:
+        commit = subprocess.run(
+            ["git", "rev-parse", "HEAD"],
+            check=True,
+            capture_output=True,
+            text=True,
+        ).stdout.strip()
+        status = subprocess.run(
+            ["git", "status", "--porcelain"],
+            check=True,
+            capture_output=True,
+            text=True,
+        ).stdout
+    except (OSError, subprocess.CalledProcessError):
+        return None, None
+    return commit or None, bool(status.strip())
+
+
+def artifact_digest(path: Path) -> tuple[str, int]:
+    """파일 또는 디렉터리 트리의 결정적 sha256과 총 바이트 수."""
+    path = Path(path)
+    if path.is_file():
+        digest = hashlib.sha256(path.read_bytes()).hexdigest()
+        return digest, path.stat().st_size
+    hasher = hashlib.sha256()
+    total = 0
+    for child in sorted(item for item in path.rglob("*") if item.is_file()):
+        relative = child.relative_to(path).as_posix().encode("utf-8")
+        payload = child.read_bytes()
+        hasher.update(len(relative).to_bytes(8, "big"))
+        hasher.update(relative)
+        hasher.update(len(payload).to_bytes(8, "big"))
+        hasher.update(payload)
+        total += len(payload)
+    return hasher.hexdigest(), total
+
+
+def artifact_records(paths: list[Path], *, base: Path) -> list[dict]:
+    records = []
+    for path in paths:
+        digest, size = artifact_digest(path)
+        records.append(
+            {
+                "path": path.relative_to(base).as_posix(),
+                "sha256": digest,
+                "size_bytes": size,
+                "kind": "directory" if path.is_dir() else "file",
+            }
+        )
+    return records
 
 
 def write_json(data: dict, path: Path) -> None:

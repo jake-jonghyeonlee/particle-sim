@@ -4,6 +4,8 @@ from pathlib import Path
 
 import numpy as np
 import pytest
+import yaml
+from PIL import Image
 from pydantic import ValidationError
 
 from particle_sim.config import load_manifest
@@ -13,12 +15,18 @@ from particle_sim.failure.open_failure import (
     PROXY,
     blocked_mask,
     causes_open,
+    causes_open_regions,
     open_candidates,
+    particle_footprint,
+    resolve_terminal_regions,
     resolve_terminals,
     simulate_open,
 )
+from particle_sim.geometry.contact import DistanceCache
 from particle_sim.io.masks import GridSpec, load_product_masks
+from particle_sim.io.stack import build_stack_z
 from particle_sim.schema import OpenPath
+from particle_sim.units import evaluate_units
 from particle_sim.validation.synthetic_cases import build_case, write_case
 
 
@@ -64,6 +72,23 @@ def test_causes_open_needs_terminal_separation() -> None:
     assert causes_open(wire, only_terminal, (20, 6), (20, 53))
 
 
+def test_terminal_regions_allow_partial_survival_but_detect_cut() -> None:
+    wire = _wire()
+    terminal_a = np.zeros(wire.shape, dtype=bool)
+    terminal_b = np.zeros(wire.shape, dtype=bool)
+    terminal_a[18:23, 5:8] = True
+    terminal_b[18:23, 52:55] = True
+    partial = np.zeros(wire.shape, dtype=bool)
+    partial[18:20, 5:8] = True
+    assert not causes_open_regions(wire, partial, terminal_a, terminal_b)
+    covered = np.zeros(wire.shape, dtype=bool)
+    covered[terminal_a] = True
+    assert causes_open_regions(wire, covered, terminal_a, terminal_b)
+    cut = np.zeros(wire.shape, dtype=bool)
+    cut[:, 29:32] = True
+    assert causes_open_regions(wire, cut, terminal_a, terminal_b)
+
+
 @pytest.mark.parametrize("diameter", [1.0, 2.0, 3.0, 4.0, 6.0])
 def test_candidate_reduction_never_misses_a_brute_force_hit(diameter: float) -> None:
     wire = _wire()
@@ -92,6 +117,37 @@ def test_straight_wire_is_cut_by_a_large_particle(tmp_path: Path) -> None:
     # the cut positions sit on the wire, not somewhere in the empty field
     ys = np.nonzero(large.failure)[0]
     assert ys.min() >= 90 and ys.max() <= 110
+
+
+def test_cropped_connectivity_matches_full_grid_reference(tmp_path: Path) -> None:
+    manifest, masks = _case(tmp_path, "open_straight")
+    open_path = manifest.open_paths[0]
+    electrode = masks.electrodes[open_path.electrode]
+    terminal_a, terminal_b, _classification, _kind = resolve_terminal_regions(
+        open_path, masks, electrode, manifest.product_id
+    )
+    diameter = 6.0
+    radius = diameter / 2.0
+    candidates = open_candidates(electrode, masks.grid, radius, manifest.contact_margin_um)
+    stamp = particle_footprint(masks.grid, radius, manifest.contact_margin_um)
+    half_y, half_x = stamp.shape[0] // 2, stamp.shape[1] // 2
+    height, width = electrode.shape
+    blocked = np.zeros(electrode.shape, dtype=bool)
+    expected = np.zeros(electrode.shape, dtype=bool)
+    ys, xs = np.nonzero(candidates)
+    for y, x in zip(ys.tolist(), xs.tolist(), strict=True):
+        top, bottom = max(0, y - half_y), min(height, y + half_y + 1)
+        left, right = max(0, x - half_x), min(width, x + half_x + 1)
+        window = stamp[
+            top - (y - half_y) : stamp.shape[0] - ((y + half_y + 1) - bottom),
+            left - (x - half_x) : stamp.shape[1] - ((x + half_x + 1) - right),
+        ]
+        blocked[top:bottom, left:right] = window
+        expected[y, x] = causes_open_regions(electrode, blocked, terminal_a, terminal_b)
+        blocked[top:bottom, left:right] = False
+
+    actual = simulate_open(manifest, masks, open_path, diameter)
+    assert np.array_equal(actual.failure, expected)
 
 
 def test_detour_keeps_terminals_connected(tmp_path: Path) -> None:
@@ -182,3 +238,74 @@ def test_candidate_reduction_with_contact_margin(margin: float) -> None:
             brute[y, x] = causes_open(wire, blocked_mask(distance, 1.0, margin), *terminals)
     candidates = open_candidates(wire, grid, 1.0, margin, terminals)
     assert not (brute & ~candidates).any()
+
+
+def test_terminal_region_masks_load_and_drive_open(tmp_path: Path) -> None:
+    manifest_path = write_case(build_case("open_straight"), tmp_path / "regions")
+    data = yaml.safe_load(manifest_path.read_text(encoding="utf-8"))
+    shape = (200, 200)
+    terminal_a = np.zeros(shape, dtype=np.uint8)
+    terminal_b = np.zeros(shape, dtype=np.uint8)
+    terminal_a[98:103, 20:25] = 255
+    terminal_b[98:103, 175:180] = 255
+    Image.fromarray(terminal_a, mode="L").save(manifest_path.parent / "masks/terminal_a.png")
+    Image.fromarray(terminal_b, mode="L").save(manifest_path.parent / "masks/terminal_b.png")
+    path = data["open_paths"][0]
+    path.pop("terminal_a_yx_px")
+    path.pop("terminal_b_yx_px")
+    path["terminal_a_mask_path"] = "masks/terminal_a.png"
+    path["terminal_b_mask_path"] = "masks/terminal_b.png"
+    path["applicable_particle_source_steps"] = [data["particle_source_steps"][0]["step_id"]]
+    manifest_path.write_text(yaml.safe_dump(data, sort_keys=False), encoding="utf-8")
+    manifest = load_manifest(manifest_path)
+    masks = load_product_masks(manifest, manifest_path)
+    result = simulate_open(manifest, masks, manifest.open_paths[0], 6.0)
+    assert result.terminal_kind == "region_mask"
+    assert result.classification == CONFIRMED
+    assert result.failure.any()
+
+
+def test_open_result_cache_reuses_identical_geometry_across_source_steps(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    manifest, masks = _case(tmp_path, "open_straight")
+    stack_z = build_stack_z(manifest)
+    distance_cache = DistanceCache(masks)
+    open_cache = {}
+    calls = 0
+
+    original = simulate_open
+
+    def counted_simulate_open(*args, **kwargs):
+        nonlocal calls
+        calls += 1
+        return original(*args, **kwargs)
+
+    monkeypatch.setattr("particle_sim.units.simulate_open", counted_simulate_open)
+    results = [
+        evaluate_units(
+            manifest,
+            masks,
+            stack_z,
+            step.step_id,
+            6.0,
+            distance_cache,
+            open_cache,
+        )[0]
+        for step in manifest.particle_source_steps
+    ]
+
+    assert calls == 1
+    assert len(open_cache) == 1
+    assert all(np.array_equal(result.failure, results[0].failure) for result in results[1:])
+
+    evaluate_units(
+        manifest,
+        masks,
+        stack_z,
+        manifest.particle_source_steps[0].step_id,
+        8.0,
+        distance_cache,
+        open_cache,
+    )
+    assert calls == 2

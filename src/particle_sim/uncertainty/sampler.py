@@ -8,7 +8,7 @@ import numpy as np
 from scipy.stats import qmc
 
 from particle_sim.errors import InputContractError
-from particle_sim.schema import ScenarioConfig
+from particle_sim.schema import NormalSpec, OverlayXYSpec, ScenarioConfig
 from particle_sim.uncertainty.transforms import normal_from_unit, uniform_from_unit
 
 
@@ -25,6 +25,8 @@ class Scenario:
     embedding_depth_um: float | None
     planarization_factor: dict[str, float]
     contact_margin_um: float | None
+    scramble_seed: int = 0
+    sample_index: int = 0
 
 
 def variable_names(config: ScenarioConfig) -> list[str]:
@@ -51,6 +53,13 @@ def variable_names(config: ScenarioConfig) -> list[str]:
     return names
 
 
+def _overlay_axis_spec(config: ScenarioConfig, layer: str, axis: str) -> NormalSpec:
+    spec = config.overlay_um[layer]
+    if isinstance(spec, OverlayXYSpec):
+        return spec.x if axis == "x" else spec.y
+    return spec
+
+
 def make_sobol_unit_samples(dimensions: int, exponent_m: int, seed: int) -> np.ndarray:
     """scrambled Sobol 단위 표본을 생성한다."""
     if dimensions <= 0 or exponent_m < 0:
@@ -64,9 +73,9 @@ def _fixed_values(config: ScenarioConfig) -> dict[str, float]:
     values: dict[str, float] = {}
     for key, spec in config.thickness_delta_um.items():
         values[f"thickness_delta_um.{key}"] = spec.mean
-    for key, spec in config.overlay_um.items():
-        values[f"overlay_um.{key}.x"] = spec.mean
-        values[f"overlay_um.{key}.y"] = spec.mean
+    for key in config.overlay_um:
+        values[f"overlay_um.{key}.x"] = _overlay_axis_spec(config, key, "x").mean
+        values[f"overlay_um.{key}.y"] = _overlay_axis_spec(config, key, "y").mean
     for key, spec in config.cd_bias_um.items():
         values[f"cd_bias_um.{key}"] = spec.mean
     if config.particle_diameter_delta_um is not None:
@@ -87,6 +96,9 @@ def _build_one(
     config: ScenarioConfig,
     scenario_id: int,
     values: dict[str, float],
+    *,
+    seed: int = 0,
+    sample_index: int | None = None,
 ) -> Scenario:
     thickness = {
         key: values[f"thickness_delta_um.{key}"] for key in config.thickness_delta_um
@@ -117,6 +129,8 @@ def _build_one(
         embedding_depth_um=embedding_depth,
         planarization_factor=planarization,
         contact_margin_um=contact_margin,
+        scramble_seed=seed,
+        sample_index=scenario_id if sample_index is None else sample_index,
     )
 
 
@@ -126,7 +140,7 @@ def build_scenarios(config: ScenarioConfig, exponent_m: int, seed: int) -> list[
     모든 산포가 0이면 고정값을 가진 시나리오 1개만 반환한다.
     """
     if config.is_degenerate():
-        return [_build_one(config, 0, _fixed_values(config))]
+        return [_build_one(config, 0, _fixed_values(config), seed=seed, sample_index=0)]
 
     names = variable_names(config)
     unit = make_sobol_unit_samples(len(names), exponent_m, seed)
@@ -141,7 +155,9 @@ def build_scenarios(config: ScenarioConfig, exponent_m: int, seed: int) -> list[
                 )
             elif name.startswith("overlay_um."):
                 key, axis = name.split(".", 2)[1:3]
-                values[name] = float(normal_from_unit(u, config.overlay_um[key]))
+                values[name] = float(
+                    normal_from_unit(u, _overlay_axis_spec(config, key, axis))
+                )
             elif name.startswith("cd_bias_um."):
                 key = name.split(".", 1)[1]
                 values[name] = float(normal_from_unit(u, config.cd_bias_um[key]))
@@ -164,5 +180,5 @@ def build_scenarios(config: ScenarioConfig, exponent_m: int, seed: int) -> list[
             elif name == "contact_margin_um":
                 assert config.contact_margin_um is not None
                 values[name] = float(uniform_from_unit(u, config.contact_margin_um))
-        scenarios.append(_build_one(config, row, values))
+        scenarios.append(_build_one(config, row, values, seed=seed, sample_index=row))
     return scenarios

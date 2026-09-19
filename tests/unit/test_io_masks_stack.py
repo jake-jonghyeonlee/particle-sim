@@ -305,7 +305,7 @@ class TestLoadProductMasks:
         with pytest.raises(InputContractError, match="겹칩니다"):
             load_product_masks(manifest, mpath)
 
-    def test_union_mismatch(self, tmp_path: Path) -> None:
+    def test_layer_may_contain_unassigned_tr_region(self, tmp_path: Path) -> None:
         d = tmp_path / "masks"
         d.mkdir(exist_ok=True)
         # layer mask is larger than electrode -> union != layer
@@ -316,7 +316,21 @@ class TestLoadProductMasks:
         _write_png(d / "E0.png", em)
         mpath = _write_manifest(tmp_path, _base_manifest_dict(tmp_path))
         manifest = load_manifest(mpath)
-        with pytest.raises(InputContractError, match="합집합 불일치"):
+        masks = load_product_masks(manifest, mpath)
+        assert masks.layer_unassigned_pixels == {"L0": 84}
+
+    def test_electrode_outside_layer_fails(self, tmp_path: Path) -> None:
+        d = tmp_path / "masks"
+        d.mkdir(exist_ok=True)
+        layer = np.zeros((10, 10), dtype=bool)
+        layer[3:6, 3:6] = True
+        electrode = layer.copy()
+        electrode[0, 0] = True
+        _write_png(d / "L0.png", layer)
+        _write_png(d / "E0.png", electrode)
+        mpath = _write_manifest(tmp_path, _base_manifest_dict(tmp_path))
+        manifest = load_manifest(mpath)
+        with pytest.raises(InputContractError, match="밖에 전극"):
             load_product_masks(manifest, mpath)
 
 

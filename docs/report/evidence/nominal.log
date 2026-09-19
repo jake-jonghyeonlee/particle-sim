@@ -1,0 +1,13 @@
+{
+  "status": "ok",
+  "run_id": "20260918T045352Z_SYN_PILOT",
+  "outputs": {
+    "hotspots": "docs/report/work/run/hotspots.zarr",
+    "ca_table": "docs/report/work/run/ca.parquet",
+    "union_table": "docs/report/work/run/ca_union.parquet",
+    "legacy_comparison": "docs/report/work/run/legacy_vs_edt.csv",
+    "run_manifest": "docs/report/work/run/run_manifest.json"
+  }
+}
+        1.72 real         1.38 user         0.19 sys
+time: sysctl kern.clockrate: Operation not permitted

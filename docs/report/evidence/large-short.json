@@ -1,0 +1,17 @@
+{
+  "command": [
+    ".venv/bin/python",
+    "-m",
+    "particle_sim",
+    "simulate-nominal",
+    "--product-config",
+    "docs/report/work/large-case/manifest.yaml",
+    "--output",
+    "docs/report/work/large-short"
+  ],
+  "returncode": 0,
+  "wall_seconds": 16.072014833102003,
+  "peak_rss_bytes": 533561344,
+  "stdout": "{\n  \"status\": \"ok\",\n  \"run_id\": \"20260918T045504Z_SYN_BENCH_1000\",\n  \"outputs\": {\n    \"hotspots\": \"docs/report/work/large-short/hotspots.zarr\",\n    \"ca_table\": \"docs/report/work/large-short/ca.parquet\",\n    \"union_table\": \"docs/report/work/large-short/ca_union.parquet\",\n    \"legacy_comparison\": \"docs/report/work/large-short/legacy_vs_edt.csv\",\n    \"run_manifest\": \"docs/report/work/large-short/run_manifest.json\"\n  }\n}\n",
+  "stderr": ""
+}

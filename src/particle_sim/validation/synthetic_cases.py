@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import csv
+from copy import deepcopy
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -16,6 +17,7 @@ CASE_NAMES: tuple[str, ...] = (
     "diagonal_offset",
     "triple_overlap",
     "pilot",
+    "complex_multilayer",
     "open_straight",
     "open_detour",
     "open_branch",
@@ -106,6 +108,89 @@ def _stripe(x0: int, x1: int) -> np.ndarray:
     mask = np.zeros(SHAPE_YX, dtype=bool)
     mask[:, x0:x1] = True
     return mask
+
+
+def _complex_multilayer_masks() -> tuple[dict[str, np.ndarray], dict[str, str]]:
+    """Ten non-overlapping electrodes with branches, bends, islands and layer crossings."""
+    blocks_by_electrode = {
+        "G1": [(18, 28, 15, 88), (18, 115, 15, 25), (70, 80, 25, 70)],
+        "G2": [(42, 52, 70, 150), (42, 135, 105, 115), (125, 135, 75, 115)],
+        "G3": [(145, 165, 28, 48), (145, 165, 72, 92)],
+        "D1": [(35, 45, 30, 105), (35, 100, 95, 105), (90, 100, 55, 105)],
+        "D2": [(105, 115, 30, 100), (105, 175, 30, 40), (150, 160, 40, 85)],
+        "D3": [(45, 55, 125, 185), (45, 135, 150, 160), (85, 95, 120, 150)],
+        "D4": [(145, 165, 115, 137), (145, 165, 168, 190), (155, 160, 137, 168)],
+        "P1": [(25, 65, 42, 82), (55, 75, 60, 98)],
+        "P2": [(80, 95, 105, 130), (95, 110, 120, 145), (110, 125, 135, 160)],
+        "P3": [(135, 145, 100, 185), (135, 185, 175, 185), (175, 185, 125, 185)],
+    }
+    layer_by_electrode = {
+        "G1": "M1", "G2": "M1", "G3": "M1",
+        "D1": "M2", "D2": "M2", "D3": "M2", "D4": "M2",
+        "P1": "M3", "P2": "M3", "P3": "M3",
+    }
+    return {key: _blocks(value) for key, value in blocks_by_electrode.items()}, layer_by_electrode
+
+
+def _build_complex_multilayer_case() -> SyntheticCase:
+    electrode_masks, layer_by_electrode = _complex_multilayer_masks()
+    layer_masks = {
+        layer: np.zeros(SHAPE_YX, dtype=bool)
+        for layer, material, *_ in STACK
+        if material == "conductor"
+    }
+    for electrode_id, mask in electrode_masks.items():
+        layer_masks[layer_by_electrode[electrode_id]] |= mask
+
+    roles = {"M1": "GATE", "M2": "DATA", "M3": "PIXEL"}
+    pair_specs = [
+        ("G1", "G2", "lateral_short"),
+        ("G2", "G3", "lateral_short"),
+        ("D1", "D2", "lateral_short"),
+        ("D1", "D3", "lateral_short"),
+        ("D2", "D4", "lateral_short"),
+        ("D3", "D4", "lateral_short"),
+        ("G1", "D1", "vertical_short"),
+        ("G2", "D1", "vertical_short"),
+        ("G2", "D3", "vertical_short"),
+        ("G3", "D2", "vertical_short"),
+        ("D1", "P1", "vertical_short"),
+        ("D2", "P3", "vertical_short"),
+        ("D3", "P2", "vertical_short"),
+        ("D4", "P3", "vertical_short"),
+        ("G1", "D4", "vertical_short"),
+        ("G3", "D3", "vertical_short"),
+    ]
+    manifest = _base_manifest(
+        "complex_multilayer",
+        electrodes=[
+            {
+                "electrode_id": electrode_id,
+                "layer_name": layer,
+                "net_id": f"NET_{electrode_id}",
+                "electrode_role": roles[layer],
+                "path": f"masks/electrode_{electrode_id}.png",
+            }
+            for electrode_id, layer in layer_by_electrode.items()
+        ],
+        layer_masks=layer_masks,
+        pairs=[
+            {
+                "pair_id": f"{a}__{b}",
+                "electrode_a": a,
+                "electrode_b": b,
+                "failure_mode": mode,
+            }
+            for a, b, mode in pair_specs
+        ],
+        open_paths=[],
+    )
+    return SyntheticCase(
+        name="complex_multilayer",
+        manifest=manifest,
+        layer_masks=layer_masks,
+        electrode_masks=electrode_masks,
+    )
 
 
 def _base_manifest(
@@ -211,6 +296,8 @@ def build_case(name: str) -> SyntheticCase:
     """Build one synthetic product manifest with its layer and electrode masks."""
     if name in _OPEN_SHAPES:
         return _build_open_case(name)
+    if name == "complex_multilayer":
+        return _build_complex_multilayer_case()
     if name not in _CASES:
         raise ValueError(f"알 수 없는 합성 case: {name!r} (허용: {', '.join(CASE_NAMES)})")
     electrode_specs, pair_specs = _CASES[name]
@@ -252,6 +339,28 @@ def build_case(name: str) -> SyntheticCase:
         manifest=manifest,
         layer_masks=layer_masks,
         electrode_masks=electrode_masks,
+    )
+
+
+def tile_case(case: SyntheticCase, repeats_yx: tuple[int, int]) -> SyntheticCase:
+    """Tile a fixture without changing pixel size, for deterministic scale measurements."""
+    repeat_y, repeat_x = repeats_yx
+    if repeat_y < 1 or repeat_x < 1:
+        raise ValueError(f"반복 수는 1 이상이어야 합니다: {repeats_yx}")
+    manifest = deepcopy(case.manifest)
+    shape_y = next(iter(case.layer_masks.values())).shape[0] * repeat_y
+    shape_x = next(iter(case.layer_masks.values())).shape[1] * repeat_x
+    manifest["product_id"] = f"{manifest['product_id']}_{shape_y}X{shape_x}"
+    coordinate = manifest["coordinate_system"]
+    coordinate["roi_width_um"] = shape_x * coordinate["pixel_size_x_um"]
+    coordinate["roi_height_um"] = shape_y * coordinate["pixel_size_y_um"]
+    return SyntheticCase(
+        name=f"{case.name}_{shape_y}x{shape_x}",
+        manifest=manifest,
+        layer_masks={key: np.tile(mask, repeats_yx) for key, mask in case.layer_masks.items()},
+        electrode_masks={
+            key: np.tile(mask, repeats_yx) for key, mask in case.electrode_masks.items()
+        },
     )
 
 
