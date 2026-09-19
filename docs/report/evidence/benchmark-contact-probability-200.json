@@ -1,0 +1,51 @@
+{
+  "label": "contact-probability-pilot-200x200",
+  "purpose": "TAT and exclusion bookkeeping of automatic open and CNO under assumed variation",
+  "python": "3.12.13",
+  "sobol_exponent_m": 6,
+  "seed": 20260920,
+  "repeats": 1,
+  "variation": "assumed: overlay x/y sigma 0.2 um (non-reference layers), CD sigma 0.1 um",
+  "results": {
+    "explicit_terminals": {
+      "wall_seconds": 325.27376970788464,
+      "peak_rss_bytes": 330334208,
+      "scenario_count": 64,
+      "scenario_mask_storage": "memory",
+      "ca_mean_um2_by_unit_kind": {
+        "electrode_pair": 12207.1875,
+        "open_path": 6431.9375
+      },
+      "ca_nominal_um2_by_unit_kind": {
+        "electrode_pair": 12235.0,
+        "open_path": 6393.0
+      },
+      "scenario_exclusions": [],
+      "scenario_contact_lost_holes": {
+        "max_lost_holes": 0,
+        "scenarios_with_lost_holes": 0
+      }
+    },
+    "contact_terminals": {
+      "wall_seconds": 287.8042882089503,
+      "peak_rss_bytes": 377487360,
+      "scenario_count": 64,
+      "scenario_mask_storage": "memory",
+      "ca_mean_um2_by_unit_kind": {
+        "contact": 177.28515625,
+        "electrode_pair": 12194.9140625,
+        "open_electrode": 6088.41796875
+      },
+      "ca_nominal_um2_by_unit_kind": {
+        "contact": 138.0,
+        "electrode_pair": 12235.0,
+        "open_electrode": 6071.0
+      },
+      "scenario_exclusions": [],
+      "scenario_contact_lost_holes": {
+        "max_lost_holes": 0,
+        "scenarios_with_lost_holes": 0
+      }
+    }
+  }
+}

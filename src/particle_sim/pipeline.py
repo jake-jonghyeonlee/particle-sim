@@ -606,6 +606,18 @@ def run_probability(
                 union_accumulators = {
                     key: ProbabilityAccumulator(grid.shape_yx, grid) for key in union_keys
                 }
+                nominal_results = {
+                    r.pair_id: r
+                    for r in evaluate_units(
+                        manifest,
+                        masks,
+                        stack_z,
+                        step.step_id,
+                        diameter,
+                        nominal_cache,
+                        nominal_open_cache,
+                    )
+                }
                 allocated_samples = {unit_id: [] for unit_id in unit_id_list}
                 unique_samples = {unit_id: [] for unit_id in unit_id_list}
                 for scenario_index, scenario in enumerate(scenarios):
@@ -626,7 +638,13 @@ def run_probability(
                     )
                     for unit in results:
                         unit_accumulators[unit.pair_id].add(unit.failure, unit.pair_margin_um)
-                        if unit.classification in SCENARIO_EXCLUSIONS:
+                        # a unit already excluded in the nominal geometry (e.g. an electrode
+                        # without two terminals) is structural, not a scenario effect
+                        if (
+                            unit.classification in SCENARIO_EXCLUSIONS
+                            and nominal_results[unit.pair_id].classification
+                            not in SCENARIO_EXCLUSIONS
+                        ):
                             key = f"{step.step_id}|{float(diameter)}|{unit.pair_id}"
                             counts = scenario_exclusions.setdefault(key, {})
                             counts[unit.classification] = counts.get(unit.classification, 0) + 1
@@ -637,18 +655,6 @@ def run_probability(
                     for key, union in union_by_mode(results).items():
                         union_accumulators[key].add(union.any_failure)
 
-                nominal_results = {
-                    r.pair_id: r
-                    for r in evaluate_units(
-                        manifest,
-                        masks,
-                        stack_z,
-                        step.step_id,
-                        diameter,
-                        nominal_cache,
-                        nominal_open_cache,
-                    )
-                }
                 nominal_allocation = allocate_risk(list(nominal_results.values()), grid)
                 for unit_index, unit_id in enumerate(unit_id_list):
                     accumulator = unit_accumulators[unit_id]

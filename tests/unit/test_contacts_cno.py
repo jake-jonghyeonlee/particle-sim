@@ -574,3 +574,27 @@ overlay_um:
     pd.testing.assert_frame_equal(
         pd.read_parquet(memory.ca_table)[columns], pd.read_parquet(packed.ca_table)[columns]
     )
+
+
+def test_structurally_excluded_unit_is_not_reported_as_scenario_exclusion(tmp_path: Path) -> None:
+    # W has one contact only, so auto_open:W is insufficient in the nominal geometry already
+    path = _contact_case(tmp_path, holes=_rect(28, 32, 65, 69))
+    scenario = tmp_path / "scenario.yaml"
+    scenario.write_text(
+        """
+schema_version: "2.0"
+assumption_set: contact
+evidence: measured
+overlay_reference_layer: M1
+overlay_sign_convention: positive_x_right_positive_y_down
+overlay_um:
+  M2:
+    x: {mean: 0.0, sigma: 0.2, evidence: assumed}
+    y: {mean: 0.0, sigma: 0.2, evidence: assumed}
+""",
+        encoding="utf-8",
+    )
+    result = run_probability(path, scenario, tmp_path / "prob", sobol_exponent_m=2, seed=3)
+    run_manifest = json.loads(result.run_manifest.read_text(encoding="utf-8"))
+    assert run_manifest["scenario_exclusions"] == []
+    assert not any("SCENARIO_EXCLUSION" in w for w in run_manifest["warnings"])

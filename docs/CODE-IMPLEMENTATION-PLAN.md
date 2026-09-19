@@ -49,6 +49,18 @@ contact 단자 3.889초(+4.4%), 최대 RSS는 224.8MB와 243.5MB다. 이 측정�
 시간이라 CLI 전체를 잰 기존 표(4.423초)와 직접 비교하지 않는다. 근거:
 `docs/report/evidence/benchmark-contact-pilot-200.json`, 재실행 `docs/report/benchmark_contact_pilot.py`.
 
+같은 두 사례에 가정 산포(비기준 layer overlay x/y σ 0.2 µm, CD σ 0.1 µm)로 Sobol 64조건을 1회씩
+실행했다. 명시 단자 325.3초·최대 RSS 330.3MB, contact 단자 287.8초·377.5MB였다. 1회 측정이라
+두 값의 차이를 성능 차이로 해석하지 않는다. 두 사례 모두 산포 제외 조건(`baseline_open`,
+`terminal_lost`, `contact_lost`)과 소실 contact hole은 0건이었다. contact 사례의 CNO 평균 CA는
+177.3 µm²(명목 138.0 µm²), 자동 open 평균 CA는 6,088.4 µm²(명목 6,071.0 µm²)다. 근거:
+`docs/report/evidence/benchmark-contact-probability-200.json`, 재실행
+`docs/report/benchmark_contact_probability.py`.
+
+2026-09-20에 검토 14절의 나머지 결함(비교 계약 식별자, 부분 출력, 수렴 지표, 평균 이물 표 경로,
+임시 폴더)도 수정했고 전체 자동 시험 304개가 통과했다. 명목에서 이미 단자가 부족한 단위는 산포
+제외 건수에 세지 않는다. 실제 데이터 시험 전 단계의 코드 작업은 모두 끝났다.
+
 ## 1. 현재 상태 판정
 
 기하 계산의 기본 방향은 유지할 수 있다.

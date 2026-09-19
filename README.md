@@ -1,8 +1,8 @@
 # particle-sim
 
 층별 전극 마스크와 적층 두께로 **이물 발생 공정(source step)·이물 크기별** 2.5D 기하 접촉 위험
-hotspot과 Critical Area(CA)를 계산하는 시뮬레이터다. 명목 조건, open 연결성, 공정 산포,
-Fab 가중과 외부 기존 sim 픽셀 비교를 제공한다.
+hotspot과 Critical Area(CA)를 계산하는 시뮬레이터다. 불량 유형은 lateral short, vertical short,
+open, CNO(Contact Not Open)이며 명목 조건, 공정 산포, Fab 가중과 외부 기존 sim 픽셀 비교를 제공한다.
 
 > 출력값은 **기하 접촉 위험(geometric contact risk)**이며 실제 불량확률이 아니다.
 > 확률값은 입력한 산포 모델에 조건부이며, 산포가 실제 공정값이 아니면 결과도 실제 Fab
@@ -65,6 +65,9 @@ uv run particle-sim compare-sim \
 - `electrode_pairs` / `excluded_electrode_pairs`: 계산할 조합과 사유가 있는 제외 조합. schema 2.0은
   다른 net의 미분류 조합을 거부한다
 - `open_paths`: open 판정 대상 전극, 두 단자 영역 mask와 적용할 이물 유입 공정
+- `contacts`: contact·via 원본 mask와 hole layer. 같은 net의 아래·위 전극을 잇는 hole에서 CNO를
+  계산하고, contact hole과 ROI 경계를 open 자동 단자로 쓴다
+- `open_applicable_steps_by_layer`: 자동 단자 open을 계산할 layer와 적용 이물 유입 공정
 - `embedding_depth_um`, `contact_margin_um`, `post_step_policy`: 미확정 물리값. 기본값 없이 명시해야 한다
 
 산포 시나리오는 별도 YAML이다(`configs/scenarios/*.yaml`). `evidence: measured|assumed`가
@@ -81,10 +84,10 @@ uv run particle-sim compare-sim \
 | 파일 | 내용 |
 |---|---|
 | `hotspots.zarr` | 불량 단위별 legacy/nominal hotspot·margin과 mode별 union·동시 단위 수 |
-| `ca.parquet` | 전극 조합/open별 raw·`1/k` 배분·고유 CA와 실제 전극/layer ID |
+| `ca.parquet` | 전극 조합·open·CNO 단위별 raw·`1/k` 배분·고유 CA와 실제 전극/layer ID |
 | `ca_union.parquet` | 불량 종류별·전체(`any`) 명목 합집합 CA와 단위별 단순합 |
 | `legacy_vs_edt.csv` | 기존 Erode/Dilate와 EDT 기준 hotspot의 pixel 차이와 원인 분류 |
-| `run_manifest.json` | config hash, 입력 파일 hash, TODO_PHYSICS 경고, 단위, 버전 |
+| `run_manifest.json` | config hash, 입력 파일 hash, TODO_PHYSICS 경고, CNO 가림 기준, 단위, 버전 |
 | `report/` | 그림과 한국어 보고서(`make-report`) |
 
 `simulate-probability` 결과 디렉터리:
@@ -95,7 +98,7 @@ uv run particle-sim compare-sim \
 | `ca.parquet` | 단위별 nominal CA와 확률 CA 평균·p05·p50·p95, scenario_count, convergence_delta |
 | `ca_union.parquet` | 명목 합집합과 산포 평균·p05·p50·p95를 분리한 CA |
 | `convergence.csv` | seed별 64/128/256 조건 CA와 직전 대비 상대 변화 |
-| `run_manifest.json` | 모든 seed, Sobol m, 시나리오 수, 산포 근거, artifact hash |
+| `run_manifest.json` | 모든 seed, Sobol m, 시나리오 수, 산포 근거, 산포 제외 조건(`scenario_exclusions`), artifact hash |
 
 `export-simcompare`는 [particle-sim-compare](https://github.com/jake-jonghyeonlee/particle-sim-compare)의
 adapter 입력 형식(`bundles.csv`, `layouts.csv`, `hotspots.csv`, `ca_records.csv`,
