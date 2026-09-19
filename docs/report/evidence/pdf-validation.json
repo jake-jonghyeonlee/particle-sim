@@ -1,16 +1,36 @@
 {
-  "pages": 17,
+  "pages": 25,
   "images": [
     {
       "src": "figures/explainer_layout_3d.png",
       "loaded": true
     },
     {
-      "src": "figures/explainer_contact.png",
+      "src": "figures/fm_overview.png",
       "loaded": true
     },
     {
-      "src": "figures/explainer_open.png",
+      "src": "figures/fm_lateral.png",
+      "loaded": true
+    },
+    {
+      "src": "figures/fm_vertical.png",
+      "loaded": true
+    },
+    {
+      "src": "figures/fm_open_algorithm.png",
+      "loaded": true
+    },
+    {
+      "src": "figures/fm_open_pilot.png",
+      "loaded": true
+    },
+    {
+      "src": "figures/fm_cno.png",
+      "loaded": true
+    },
+    {
+      "src": "figures/fm_mix_tat.png",
       "loaded": true
     },
     {
@@ -45,7 +65,7 @@
   "layout": [
     {
       "page": 1,
-      "footer_clearance_px": 302.609375,
+      "footer_clearance_px": 288.015625,
       "horizontal_overflow": [],
       "missing_text_characters": 0,
       "pdf_images": 0
@@ -59,105 +79,161 @@
     },
     {
       "page": 3,
-      "footer_clearance_px": 210.734375,
+      "footer_clearance_px": 178.546875,
       "horizontal_overflow": [],
       "missing_text_characters": 0,
       "pdf_images": 1
     },
     {
       "page": 4,
-      "footer_clearance_px": 188.0625,
+      "footer_clearance_px": 199.296875,
       "horizontal_overflow": [],
       "missing_text_characters": 0,
       "pdf_images": 1
     },
     {
       "page": 5,
-      "footer_clearance_px": 165.0625,
+      "footer_clearance_px": 276.421875,
       "horizontal_overflow": [],
       "missing_text_characters": 0,
       "pdf_images": 1
     },
     {
       "page": 6,
-      "footer_clearance_px": 258.21875,
+      "footer_clearance_px": 268.015625,
       "horizontal_overflow": [],
       "missing_text_characters": 0,
       "pdf_images": 1
     },
     {
       "page": 7,
-      "footer_clearance_px": 154.546875,
+      "footer_clearance_px": 88.125,
       "horizontal_overflow": [],
       "missing_text_characters": 0,
       "pdf_images": 1
     },
     {
       "page": 8,
-      "footer_clearance_px": 330.890625,
+      "footer_clearance_px": 216.640625,
       "horizontal_overflow": [],
       "missing_text_characters": 0,
-      "pdf_images": 0
+      "pdf_images": 1
     },
     {
       "page": 9,
-      "footer_clearance_px": 180.546875,
+      "footer_clearance_px": 242.625,
       "horizontal_overflow": [],
       "missing_text_characters": 0,
-      "pdf_images": 2
+      "pdf_images": 1
     },
     {
       "page": 10,
-      "footer_clearance_px": 172.390625,
+      "footer_clearance_px": 301.640625,
       "horizontal_overflow": [],
       "missing_text_characters": 0,
-      "pdf_images": 2
+      "pdf_images": 1
     },
     {
       "page": 11,
-      "footer_clearance_px": 280.625,
+      "footer_clearance_px": 258.21875,
       "horizontal_overflow": [],
       "missing_text_characters": 0,
       "pdf_images": 1
     },
     {
       "page": 12,
-      "footer_clearance_px": 313.21875,
+      "footer_clearance_px": 154.546875,
       "horizontal_overflow": [],
       "missing_text_characters": 0,
-      "pdf_images": 0
+      "pdf_images": 1
     },
     {
       "page": 13,
-      "footer_clearance_px": 355.953125,
+      "footer_clearance_px": 281.8125,
       "horizontal_overflow": [],
       "missing_text_characters": 0,
       "pdf_images": 0
     },
     {
       "page": 14,
+      "footer_clearance_px": 180.546875,
+      "horizontal_overflow": [],
+      "missing_text_characters": 0,
+      "pdf_images": 2
+    },
+    {
+      "page": 15,
+      "footer_clearance_px": 172.390625,
+      "horizontal_overflow": [],
+      "missing_text_characters": 0,
+      "pdf_images": 2
+    },
+    {
+      "page": 16,
+      "footer_clearance_px": 280.625,
+      "horizontal_overflow": [],
+      "missing_text_characters": 0,
+      "pdf_images": 1
+    },
+    {
+      "page": 17,
+      "footer_clearance_px": 238.84375,
+      "horizontal_overflow": [],
+      "missing_text_characters": 0,
+      "pdf_images": 0
+    },
+    {
+      "page": 18,
+      "footer_clearance_px": 114.28125,
+      "horizontal_overflow": [],
+      "missing_text_characters": 0,
+      "pdf_images": 0
+    },
+    {
+      "page": 19,
       "footer_clearance_px": 379.6875,
       "horizontal_overflow": [],
       "missing_text_characters": 0,
       "pdf_images": 0
     },
     {
-      "page": 15,
-      "footer_clearance_px": 255.6875,
+      "page": 20,
+      "footer_clearance_px": 392.515625,
       "horizontal_overflow": [],
       "missing_text_characters": 0,
       "pdf_images": 0
     },
     {
-      "page": 16,
-      "footer_clearance_px": 222.5,
+      "page": 21,
+      "footer_clearance_px": 112.96875,
       "horizontal_overflow": [],
       "missing_text_characters": 0,
       "pdf_images": 0
     },
     {
-      "page": 17,
-      "footer_clearance_px": 306.15625,
+      "page": 22,
+      "footer_clearance_px": 248.8125,
+      "horizontal_overflow": [],
+      "missing_text_characters": 0,
+      "pdf_images": 0
+    },
+    {
+      "page": 23,
+      "footer_clearance_px": 368.734375,
+      "horizontal_overflow": [],
+      "missing_text_characters": 0,
+      "pdf_images": 0
+    },
+    {
+      "page": 24,
+      "footer_clearance_px": 161.328125,
+      "horizontal_overflow": [],
+      "missing_text_characters": 0,
+      "pdf_images": 0
+    },
+    {
+      "page": 25,
+      "footer_clearance_px": 207.5,
       "horizontal_overflow": [],
       "missing_text_characters": 0,
       "pdf_images": 0

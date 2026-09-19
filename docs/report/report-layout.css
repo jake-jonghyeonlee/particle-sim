@@ -11,18 +11,24 @@ figure.half img { height:60mm; }
 .source { margin-top:3mm; }
 pre { font-size:8pt; line-height:1.4; }
 /* Dense evidence sections retain readable type, with tighter vertical spacing. */
-.page:nth-of-type(8), .page:nth-of-type(12), .page:nth-of-type(17) { font-size:9.5pt; }
-.page:nth-of-type(8) table, .page:nth-of-type(12) table, .page:nth-of-type(17) table { font-size:8.5pt; }
-.page:nth-of-type(10) { font-size:9pt; }
-.page:nth-of-type(10) table { font-size:8pt; margin:2mm 0; }
-.page:nth-of-type(10) td, .page:nth-of-type(10) th { padding:1.2mm 1.6mm; }
-.page:nth-of-type(10) figure { margin:1.5mm 0 2mm; }
-.page:nth-of-type(10) figure.half img { height:48mm; }
-.page:nth-of-type(10) .note { margin:2mm 0; padding:2mm 3mm; }
-.page:nth-of-type(17) { font-size:9pt; }
-.page:nth-of-type(17) table { font-size:8pt; margin:2mm 0; }
-.page:nth-of-type(17) td, .page:nth-of-type(17) th { padding:1.3mm 1.7mm; }
-.page:nth-of-type(17) h2 { margin:3mm 0 1.5mm; }
+.page.dense { font-size:9.5pt; }
+.page.dense table { font-size:8.5pt; }
+.page.compact { font-size:9pt; }
+.page.compact table { font-size:8pt; margin:2mm 0; }
+.page.compact td, .page.compact th { padding:1.2mm 1.6mm; }
+.page.compact figure { margin:1.5mm 0 2mm; }
+.page.compact figure.half img { height:48mm; }
+.page.compact .note { margin:2mm 0; padding:2mm 3mm; }
+.page.guide { font-size:9pt; }
+.page.guide table { font-size:8pt; margin:2mm 0; }
+.page.guide td, .page.guide th { padding:1.3mm 1.7mm; }
+.page.guide h2 { margin:3mm 0 1.5mm; }
+.page.dense td, .page.dense th { padding:1.4mm 1.8mm; }
+.page.dense .note { margin:2mm 0; padding:2mm 3mm; }
+table.compact { font-size:8.2pt; }
+table.compact td, table.compact th { padding:1.2mm 1.6mm; }
+table.numeric td:not(:first-child), table.numeric th:not(:first-child) { text-align:right; }
+table.numeric th:first-child, table.numeric td:first-child { width:16%; }
 @media screen {
  .page { width:210mm; height:296mm; padding:18mm 16mm; }
 }

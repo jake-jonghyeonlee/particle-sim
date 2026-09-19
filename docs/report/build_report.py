@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import html
 import json
+import re
 from pathlib import Path
 
 import pandas as pd
@@ -9,6 +10,7 @@ import pandas as pd
 R = Path(__file__).resolve().parent
 E = R / "evidence"
 pages: list[str] = []
+figure_count = [0]
 
 
 def table(headers, rows, cls=""):
@@ -21,6 +23,9 @@ def table(headers, rows, cls=""):
 
 
 def fig(name, caption, cls=""):
+    # figures are numbered in page order; any hand-written "그림 N." prefix is replaced
+    figure_count[0] += 1
+    caption = f"그림 {figure_count[0]}. " + re.sub(r"^그림 \d+\.\s*", "", caption)
     return (
         f'<figure class="{cls}"><img src="figures/{name}" alt="{html.escape(caption)}">'
         f"<figcaption>{caption} <b>합성 데이터.</b></figcaption></figure>"
@@ -35,13 +40,29 @@ def source(text):
     return f'<div class="source">근거 · {text}</div>'
 
 
-def page(kicker, title, body):
+# dense layouts by page name, so layout rules survive inserting or moving pages
+PAGE_CLASSES = {
+    "합성 검증": "dense",
+    "대형·산포 성능": "dense",
+    "회귀 검토": "dense",
+    "출력 가이드": "dense guide",
+    "2차 합성 시험": "compact",
+    "불량 유형 · open ① 알고리즘": "dense",
+    "불량 유형 · 통합과 성능": "dense",
+}
+
+
+def page(kicker, title, body, cls=""):
     number = len(pages) + 1
+    name = re.sub(r"^\d+ / ", "", kicker)
+    # kickers are numbered in page order so inserted pages never leave stale numbers
+    kicker = f"{number:02d} / {name}"
+    cls = cls or PAGE_CLASSES.get(name, "")
     pages.append(
-        '<section class="page">'
+        f'<section class="page {cls}">'
         '<header>PARTICLE-SIM <span>기술개발 내부자료 · 개발 결과 보고서</span></header>'
         f'<div class="kicker">{kicker}</div><h1>{title}</h1>{body}'
-        '<footer><span>2026.09.19 · 기하 접촉 위험 / 합성 검증</span>'
+        '<footer><span>2026.09.20 · 기하 접촉 위험 / 합성 검증</span>'
         f'<b>{number:02d}</b></footer></section>'
     )
 
@@ -74,17 +95,18 @@ triple = pd.read_parquet(E / "triple/ca_union.parquet")
 page(
     "01 / 개발내용 요약",
     "다층 전극의 이물 위험 계산을 구현하고<br>합성 형상으로 검증했다",
-    '<p class="lead">particle-sim은 이물 중심 후보 위치마다 <b>lateral short, vertical short, open</b> 가능성을 계산하고, 그 위치의 면적을 적분해 Critical Area(CA)를 구하는 2.5D 시뮬레이터다.</p>'
-    + note('<b>현재 단계 · P0 코드 보완 완료</b><br>입력·산포·Fab·출력 계약과 외부 기존 sim 비교기를 구현했다. 실제 제품 mask와 기존 현장 sim 산출물의 동일 입력 대조가 다음 단계다.')
-    + '<div class="metrics"><div><strong>279 / 279</strong><span>전체 pytest 결과</span></div><div><strong>전극 10개</strong><span>복합 fixture · 조합 16개</span></div><div><strong>13.48 s</strong><span>1000² 복합 short 기준 조건</span></div></div>'
+    '<p class="lead">particle-sim은 이물 중심 후보 위치마다 <b>lateral short, vertical short, open, CNO</b> 가능성을 계산하고, 그 위치의 면적을 적분해 Critical Area(CA)를 구하는 2.5D 시뮬레이터다.</p>'
+    + note('<b>현재 단계 · 실제 데이터 시험 직전</b><br>입력·산포·Fab·출력 계약, 외부 기존 sim 비교기, contact 기반 자동 단자 open과 CNO를 구현했다. 실제 제품 mask와 기존 현장 sim 산출물의 동일 입력 대조가 다음 단계다.')
+    + '<div class="metrics"><div><strong>304 / 304</strong><span>전체 pytest 결과</span></div><div><strong>불량 4유형</strong><span>lateral · vertical · open · CNO</span></div><div><strong>0 px</strong><span>자동 단자 open의 CNO 밖 차이</span></div></div>'
     + table(["구분", "개발·검증 내용"], [
-        ["구현", "입력 검증 → 2.5D 접촉/open → 전극 조합별 CA → 중복 제거 union CA → 결과 저장을 연결했다."],
+        ["구현", "입력 검증 → 2.5D 접촉·open·CNO → 불량 단위별 CA → 중복 제거 union CA → 결과 저장을 연결했다."],
         ["핵심 개선", "기존 2.5D 계산에 없던 xy와 높이 차의 <b>대각 거리 CA</b>를 추가하고 공정 산포 계산 경로를 마련했다."],
         ["복합 검증", "한 layer의 여러 전극, 다층 정렬·부분 중첩·대각 교차, 음성 대조와 hotspot 중첩을 확인했다."],
+        ["신규 유형", "contact·via mask로 open 단자를 자동 지정하고, contact가 막히는 <b>CNO</b>를 별도 불량으로 계산한다."],
         ["결과 해석", "현재 값은 기하 접촉 위험이다. 실제 불량률·수율 또는 제품 승인값으로 해석하지 않는다."],
         ["다음 순서", "기존 sim 실제 동일 입력 비교 → 대체 판정 → 실제 제품 산포/Fab → particle-sim-compare 연동."],
     ])
-    + source("README·SPEC·현재 구현 / evidence/pytest-p0.log, complex-validation.json, benchmark-*.json."),
+    + source("README·SPEC·현재 구현 / evidence/pytest-2026-09-20.log, complex-validation.json, benchmark-*.json, benchmark-contact-*.json."),
 )
 
 page(
@@ -113,40 +135,125 @@ page(
         ["이물 크기 + 평가 전극 조합", "어떤 크기의 이물이 어느 전극 사이를 연결하는지", "조합별 hotspot·CA"],
         ["mask별 산포 YAML", "실측 overlay x/y와 CD 분포", "조건부 확률 지도·평균 CA"],
         ["Fab 이물 표", "layer·크기별 평균 개수와 검사면적", "layer·전극 조합별 가중 위험"],
+        ["contact·via mask", "위·아래 전극을 잇는 hole의 위치", "open 자동 단자, CNO hotspot·CA"],
     ])
     + note("전극 mask의 합집합은 layer mask의 <b>부분집합</b>일 수 있다. 남는 TR 영역은 기록하되, 신호 분리 기능을 이물 불량 판정에 넣을지는 후속 물리 검토 항목으로 둔다.")
     + source("evidence/case/manifest.yaml, masks/ / figures/explainer_layout_3d.png."),
 )
 
+contact_nominal = json.loads((E / "benchmark-contact-pilot-200.json").read_text(encoding="utf-8"))
+contact_prob = json.loads((E / "benchmark-contact-probability-200.json").read_text(encoding="utf-8"))
+contact_eq = contact_nominal["open_equivalence"]
+contact_tat = contact_nominal["tat_summary"]
+prob_explicit = contact_prob["results"]["explicit_terminals"]
+prob_contact = contact_prob["results"]["contact_terminals"]
+
 page(
-    "04 / 계산 방법 · 접촉",
-    "두 전극까지의 2.5D 대각 거리를 각각 계산한다",
-    '<p><b>판정 순서:</b> ① 이물 직경에서 반지름과 중심 높이를 정한다. ② 중심에서 각 전극까지의 평면 거리와 높이 차를 구한다. ③ 두 거리를 결합한 대각 거리 Q를 계산한다. ④ 두 전극 모두 접촉하면 해당 중심 위치를 hotspot으로 기록한다.</p>'
-    + '<div class="formula">r = d / 2 &nbsp; · &nbsp; Q = √(D<sub>xy</sub>² + D<sub>z</sub>²)<br>margin = r + contact margin − Q &nbsp; · &nbsp; hotspot = (margin<sub>A</sub> ≥ 0) AND (margin<sub>B</sub> ≥ 0)</div>'
-    + fig("explainer_contact.png", "그림 2. mask1 형성 후 유입된 d=10 µm 이물의 G–A 단면 예시. x축은 이물 중심 위치, y축은 두 전극 중 더 작은 접촉 여유다. 0 이상인 주황 구간만 두 전극 동시 접촉 위치다.", "wide")
-    + table(["구분", "해석"], [
-        ["lateral short", "같은 layer의 서로 다른 net 전극 두 개에 동시에 닿는 위치"],
-        ["vertical short", "서로 다른 layer의 전극 두 개에 동시에 닿는 위치. 상하 높이 확인이 필수"],
-        ["contact margin", "첫 비교에서는 0 µm. 재질별 전기 접촉 거리 차이는 후속 검토"],
-        ["이물 형상", "현재 원형/구형만 사용. 비원형 이물은 후속 검토"],
+    "불량 유형 · 개요",
+    "이물 불량을 네 가지 유형으로 나누어 계산한다",
+    '<p class="lead">모든 유형은 같은 방식으로 답한다. <b>이물 중심이 이 위치에 오면 해당 불량이 생기는가?</b> 그렇다면 그 위치가 hotspot이고, hotspot 면적이 Critical Area(CA)다.</p>'
+    + fig("fm_overview.png", "그림 2. 네 가지 불량 유형의 판정 개념. 주황·보라 원은 이물이다.", "wide")
+    + table(["유형", "판정 조건", "필요한 입력", "불량 단위 ID"], [
+        ["lateral short", "같은 layer의 다른 net 전극 두 개에 이물이 동시에 닿음", "전극 mask, 전극 조합", "전극 조합 ID"],
+        ["vertical short", "다른 layer 전극 두 개에 xy·높이 차를 합친 대각 거리로 동시에 닿음", "전극 mask, 적층 두께·순서", "전극 조합 ID"],
+        ["open", "이물이 도체를 가려 원래 이어져 있던 단자 사이 경로가 끊김", "단자 영역 mask 또는 contact·ROI 경계 자동 단자", "open 경로 ID, <code>auto_open:전극</code>"],
+        ["CNO", "이물이 contact·via hole의 접촉 영역을 전부 덮어 층간 연결이 안 됨", "contact mask, hole layer, 적용 공정", "<code>cno:contact:아래__위</code>"],
     ])
-    + note("vertical short는 기하학상 접촉 가능한 위치다. 전도성, 절연막 파괴와 접촉저항은 아직 계산하지 않는다.")
-    + source("geometry/contact.py, particles.py, surfaces.py / failure/lateral_short.py, vertical_short.py."),
+    + note("네 유형은 같은 이물 유입 공정·크기에서 OR로 묶어 <b>union any</b>를 만든다. 한 위치에서 여러 유형이 겹치면 1/k로 나누어 합계가 union과 같도록 배분한다.")
+    + source("failure/lateral_short.py, vertical_short.py, open_failure.py, auto_open.py, contact_not_open.py / figures/fm_overview.png."),
 )
 
 page(
-    "05 / 계산 방법 · open",
-    "이물이 배선을 가려 연결을 끊는 위치를 찾는다",
-    '<p class="lead">open은 배선끼리 접촉해서 생기는 불량이 아니다. 이물이 배선을 가리는 크기와 위치 때문에, 남은 도체에서 반드시 연결되어야 할 두 단자 영역 사이의 경로가 사라지는 불량이다.</p>'
-    + '<div class="flow"><div>배선 + 두 단자 영역</div><i>→</i><div>후보 중심에 이물 배치</div><i>→</i><div>가려진 도체 제거</div><i>→</i><div>두 영역의 연결 검사</div></div>'
-    + fig("explainer_open.png", "그림 3. 직선·우회·분기·ㄱ자 배선의 open 전수 대조. 주황색은 손상된 배선이 아니라, 그 위치에 이물 중심이 오면 open이 되는 후보 위치다.", "open")
-    + '<p><b>0 px의 의미:</b> hotspot이 0이라는 뜻이 아니다. 구현 결과와 24×24 격자의 모든 중심 위치를 직접 계산한 기준 결과 사이의 불일치가 0픽셀이라는 뜻이다.</p>'
-    + table(["입력 방식", "현재/계획", "이유"], [
-        ["두 점 좌표", "합성 시험·이전 입력 호환", "실제 단자 형상을 한 픽셀로 대표하기 어려움"],
-        ["두 단자 영역 mask", "실제품 기본 입력 · 구현 완료", "영역 일부가 남아도 경로가 존재하는지 판정 가능"],
-        ["ROI 경계 fallback", "open proxy로만 유지", "실제 전기 단자를 지정한 결과와 구분"],
+    "불량 유형 · lateral short",
+    "같은 layer 두 전극에 동시에 닿는 위치를 찾는다",
+    '<div class="flow"><div>① 이물 직경 d에서 반지름 r</div><i>→</i><div>② 중심에서 전극 A·B까지 거리</div><i>→</i><div>③ 두 거리 모두 r + margin 이하</div><i>→</i><div>④ 그 중심 위치를 hotspot으로 기록</div></div>'
+    + fig("fm_lateral.png", "그림 3. ① 판정 개념, ② 복합 200² 파일럿의 D1–D2 hotspot(d=10 µm, mask1 형성 후 유입), ③ 6개 lateral 조합의 CA 합.", "wide")
+    + table(["항목", "결과 · 해석"], [
+        ["파일럿 조합", "6개 조합 × 이물 유입 공정 3 × 직경 5 = 90 조건"],
+        ["크기 단조성", "직경이 커질수록 hotspot이 넓어지고 위반은 0건"],
+        ["공정 의존", "mask1 형성 후 유입이 가장 크고, 평탄화막 형성 후 유입은 0 µm²"],
+        ["통합 비중", f'union any를 1/k 배분한 CA의 {mode_ca["lateral short"]["allocated_ca_share"]*100:.2f}% (Fab 가중 전)'],
     ])
-    + source("failure/open_failure.py / tests/unit/test_open_failure.py / evidence/recheck.json."),
+    + note("contact margin은 현재 0 µm이다. 도전성·비도전성 이물의 전기 접촉 거리 차이는 생각해야 할 부분(마지막 장)에 정리했다.")
+    + source("failure/lateral_short.py / work/contact-pilot-200/contact_terminals-result / figures/fm_lateral.png."),
+)
+
+page(
+    "불량 유형 · vertical short",
+    "xy 거리와 높이 차를 합친 대각 거리로 판정한다",
+    '<div class="formula">r = d / 2 &nbsp; · &nbsp; Q = √(D<sub>xy</sub>² + D<sub>z</sub>²)<br>margin = r + contact margin − Q &nbsp; · &nbsp; hotspot = (margin<sub>A</sub> ≥ 0) AND (margin<sub>B</sub> ≥ 0)</div>'
+    + fig("fm_vertical.png", "그림 4. ① 대각 거리 Q, ② G2(mask1)–D1(mask2) hotspot(d=10 µm), ③ 10개 vertical 조합의 CA 합.", "wide")
+    + table(["항목", "결과 · 해석"], [
+        ["개선 핵심", "기존 계산이 따로 보던 xy 거리와 높이 차를 하나의 대각 거리로 결합"],
+        ["파일럿 조합", "10개 조합 × 3 × 5 = 150 조건, 먼 거리 음성 대조 G1–D4·G3–D3은 0 px"],
+        ["공정 의존", "mask1 형성 후 유입이 가장 크고, 평탄화막 형성 후 유입은 모든 직경에서 0 µm²"],
+        ["통합 비중", f'union any 배분 CA의 {mode_ca["vertical short"]["allocated_ca_share"]*100:.2f}%로 가장 큼 (Fab 가중 전)'],
+    ])
+    + note("vertical short는 기하학상 동시 접촉 가능한 위치다. 절연막 파괴·접촉저항 같은 전기적 성립 조건은 아직 계산하지 않는다.")
+    + source("geometry/contact.py, surfaces.py / failure/vertical_short.py / figures/fm_vertical.png."),
+)
+
+page(
+    "불량 유형 · open ① 알고리즘",
+    "이어져 있던 단자가 이물로 분리되면 open이다",
+    '<p class="lead">open은 배선끼리 닿는 불량이 아니라 <b>도체가 끊기는 불량</b>이다. 먼저 이물이 없을 때 단자들이 어떻게 이어져 있는지 확인하고, 이물을 놓은 뒤 그 연결이 깨지는지 본다.</p>'
+    + fig("fm_open_algorithm.png", "그림 5. 실제 판정 함수를 작은 배선에 적용한 결과. ② 본선이 끊기면 두 contact 단자가 분리되어 open, ③ 단자 없는 가지가 떨어지면 무시, ④ 계산된 open 위치(주황)와 contact가 막히는 CNO 위치(보라).", "open")
+    + table(["단자 지정 방식", "단자", "용도"], [
+        ["contact 자동 단자 (신규)", "전극에 닿은 contact·via hole, ROI 경계에 닿은 구간", "실제 제품 기본. 사용자 단자 지정 불필요"],
+        ["단자 영역 mask", "사용자가 그린 두 영역", "특정 경로 지정, 기존 결과와 비교"],
+        ["두 점 좌표 · ROI proxy", "1픽셀 점, 전극 양 끝", "합성 시험·이전 입력 호환"],
+    ])
+    + table(["판정 규칙", "처리"], [
+        ["이물 없이도 끊긴 경로·전극에 닿지 않는 단자", "명목 입력은 오류, 산포 조건은 <code>baseline_open</code>·<code>terminal_lost</code>로 제외"],
+        ["contact 단자가 이물에 완전히 덮임", "open이 아니라 CNO로 계산"],
+        ["ROI 경계 구간이 완전히 덮임", "ROI 밖으로 이어진 배선이 끊긴 것으로 보고 open"],
+        ["단자가 2개 미만인 전극", "<code>insufficient_terminals</code>로 기록하고 계산하지 않음"],
+    ])
+    + source("failure/open_failure.py, auto_open.py / tests/unit/test_contacts_cno.py / figures/fm_open_algorithm.png."),
+)
+
+page(
+    "불량 유형 · open ② 파일럿",
+    "contact 자동 단자는 명시 단자와 같은 open 위치를 찾았다",
+    '<p>복합 200² 파일럿의 G1·D1·D2 단자 영역 자리에 같은 net의 pad 전극과 contact hole을 넣었다. 사용자가 단자를 지정한 결과와 contact에서 자동으로 단자를 만든 결과를 전 픽셀에서 비교했다.</p>'
+    + fig("fm_open_pilot.png", "그림 6. G1, mask2 형성 후 유입, d=10 µm. 명시 단자 방식은 단자가 덮이면 open으로 세고, 자동 단자 방식은 그 위치를 CNO로 옮긴다(보라).", "open")
+    + table(["경로", "명시 단자 open", "자동 단자 open", "자동에만 있음", "명시에만 있음", "CNO 밖 차이"],
+        [[path, f'{v["explicit_open_px"]:,}', f'{v["auto_open_px"]:,}', f'{v["auto_only_px"]:,}', f'{v["explicit_only_px"]:,}', f'{v["explicit_only_outside_cno_px"]:,}'] for path, v in contact_eq.items()],
+        "numeric")
+    + note("차이는 모두 contact가 완전히 가려진 위치(CNO로 이동)뿐이다. contact가 없는 기존 파일럿은 hotspot 배열 5종과 CA·union 표가 이전 결과와 픽셀 단위로 같다.")
+    + source("evidence/benchmark-contact-pilot-200.json / benchmark_contact_pilot.py (3개 공정 × 5개 직경 합계, px)."),
+)
+
+page(
+    "불량 유형 · CNO",
+    "contact hole이 이물로 막히는 위치를 따로 계산한다",
+    '<p class="lead">CNO(Contact Not Open)는 위·아래 전극을 잇는 contact·via hole이 이물로 막혀 층간 연결이 되지 않는 불량이다. 실제 접촉 영역은 <b>hole ∩ 아래 전극 ∩ 위 전극</b>이다.</p>'
+    + fig("fm_cno.png", "그림 7. ① 잠정 판정 기준, ② G1 contact의 CNO 위치(d=10 µm), ③ hole 6개의 적용 공정 CNO CA 합.", "wide")
+    + table(["항목", "현재 처리"], [
+        ["판정 (잠정)", "이물 원판이 hole의 실제 접촉 픽셀을 <b>전부</b> 덮으면 CNO"],
+        ["병렬 hole (잠정)", "같은 두 전극을 잇는 hole 중 하나라도 막히면 CNO"],
+        ["입력 검증", "hole마다 아래·위 전극이 각각 정확히 1개이고 같은 net이어야 함"],
+        ["적용 공정", "contact별로 명시. 산포로 hole이 전극과 떨어지면 <code>contact_lost</code>로 제외"],
+        ["위험도 배분", "CNO 기여도는 위·아래 전극에 절반씩 배분, <code>risk_by_contact</code> 출력"],
+    ])
+    + note("파일럿 hole은 5×4 µm라 직경 6 µm 이하 이물은 hole을 전부 덮지 못해 CNO가 0이다. 일부만 가려도 불량인지는 결정이 필요한 항목이다.")
+    + source("failure/contact_not_open.py, geometry/contacts.py / evidence/benchmark-contact-pilot-200.json / figures/fm_cno.png."),
+)
+
+page(
+    "불량 유형 · 통합과 성능",
+    "네 유형을 중복 없이 합치고 계산 시간을 확인했다",
+    fig("fm_mix_tat.png", "그림 8. ① contact 파일럿의 유형별 1/k 배분 CA(3개 공정 합)와 union any, ② 기준 조건 TAT, ③ 산포 64조건 TAT.", "wide")
+    + table(["실행 (복합 200², contact 파일럿)", "명시 단자", "contact 자동 단자"], [
+        ["기준 조건 TAT · 5회 중앙값", f'{contact_tat["explicit_terminals"]["wall_median_seconds"]:.3f} s', f'{contact_tat["contact_terminals"]["wall_median_seconds"]:.3f} s'],
+        ["기준 조건 최대 RSS", f'{contact_tat["explicit_terminals"]["peak_rss_max_bytes"]/1e6:.1f} MB', f'{contact_tat["contact_terminals"]["peak_rss_max_bytes"]/1e6:.1f} MB'],
+        ["산포 64조건 TAT · 1회", f'{prob_explicit["wall_seconds"]:.1f} s', f'{prob_contact["wall_seconds"]:.1f} s'],
+        ["산포 64조건 최대 RSS", f'{prob_explicit["peak_rss_bytes"]/1e6:.1f} MB', f'{prob_contact["peak_rss_bytes"]/1e6:.1f} MB'],
+        ["산포 평균 CA · open / CNO", f'{prob_explicit["ca_mean_um2_by_unit_kind"]["open_path"]:,.1f} / — µm²', f'{prob_contact["ca_mean_um2_by_unit_kind"]["open_electrode"]:,.1f} / {prob_contact["ca_mean_um2_by_unit_kind"]["contact"]:,.1f} µm²'],
+        ["산포 제외 조건 · 소실 hole", f'{len(prob_explicit["scenario_exclusions"])} · {prob_explicit["scenario_contact_lost_holes"]["max_lost_holes"]}', f'{len(prob_contact["scenario_exclusions"])} · {prob_contact["scenario_contact_lost_holes"]["max_lost_holes"]}'],
+    ])
+    + note("배분 CA 합은 모든 직경에서 union any와 같다. 기준 조건 TAT는 프로세스 안의 계산 시간이라 CLI 전체를 잰 앞 장의 표와 직접 비교하지 않는다. 산포 64조건은 가정 산포(overlay x/y σ 0.2 µm, CD σ 0.1 µm)로 1회 측정한 값이며 두 사례의 차이를 성능 차이로 해석하지 않는다.")
+    + source("evidence/benchmark-contact-pilot-200.json, benchmark-contact-probability-200.json / figures/fm_mix_tat.png."),
 )
 
 page(
@@ -180,7 +287,7 @@ page(
 page(
     "08 / 합성 검증",
     "통과한 계약과 아직 확인하지 않은 범위를 구분한다",
-    '<div class="metrics"><div><strong>279 passed</strong><span>전체 pytest 실행</span></div><div><strong>0 px</strong><span>open 전수 기준과 불일치</span></div><div><strong>0 µm²</strong><span>복합 CA 적분 최대 오차</span></div></div>'
+    '<div class="metrics"><div><strong>304 passed</strong><span>전체 pytest 실행</span></div><div><strong>0 px</strong><span>open 전수 기준과 불일치</span></div><div><strong>0 µm²</strong><span>복합 CA 적분 최대 오차</span></div></div>'
     + table(["검증 항목", "확인 결과", "남은 범위"], [
         ["산포 0 → 기준 조건", "불량 단위·union hotspot과 CA 일치", "실제 제품 입력"],
         ["같은 seed·설정", "확률·union 배열 재현, 여러 seed 기록", "실제 Fab 값 수렴"],
@@ -188,10 +295,12 @@ page(
         ["크기 단조성", "2→4→6→8→10 µm 위반 없음", "비원형 이물"],
         ["대각 위치 이동", "상부 전극 이동 방향으로 hotspot 이동", "기존 sim 실측 대조"],
         ["중복 제거", "OR·동시 단위 수와 1/k 배분 합계 일치", "실제 제품 위험 순위"],
+        ["자동 단자 open·CNO", "명시 단자와 동등(CNO 이동만 차이), CNO 전수 대조 일치", "CNO 가림 기준 확정"],
+        ["기준 단선·단자 소실", "후보 전체를 open으로 세지 않고 분류", "실제 산포 조건 빈도"],
     ])
     + '<h2>검증 단계의 판단</h2><p>합성 결과는 계산 규칙과 다중 전극 처리의 기능 근거다. 실제 제품의 유효성이나 기존 현장 sim 대체 가능성을 증명하지는 않는다. 다음 검증부터 공통 pair와 신규 대각 pair를 구분해 비교한다.</p>'
     + note("외부 기존 sim 결과와 내부 <code>legacy_failure</code>는 다르다. 내부 값은 xy kernel 참고 결과이며 기존 sim 대체 판정에 직접 사용하지 않는다.")
-    + source("evidence/pytest-p0.log, recheck.json, complex-validation.json, regression-probes.json."),
+    + source("evidence/pytest-2026-09-20.log, recheck.json, complex-validation.json, regression-probes.json."),
 )
 
 triple_s2_d6 = triple[(triple.source_step == "S_M2") & (triple.particle_size_um == 6) & (triple.failure_mode == "any")].iloc[0]
@@ -296,6 +405,14 @@ page(
         ["배분 기여도", "비중첩·완전 중첩·부분 중첩에서 합계가 union과 일치"],
         ["산포 union 열", "기준 CA와 산포 평균·분위수를 다른 열에 보존"],
     ])
+    + '<h2>2026-09-19 작업 트리 검토 결함 · 모두 수정</h2>'
+    + table(["결함", "수정"], [
+        ["이미 끊긴 경로에서 후보 전체가 open", "이물 없는 상태의 연결 검사, <code>baseline_open</code> 분류"],
+        ["산포로 단자가 사라지면 후보 전체가 open", "<code>terminal_lost</code>·<code>contact_lost</code> 분류와 실행 기록"],
+        ["기존 sim 비교에 제품·mask 식별 없음", "비교 계약 2.0: product·설계 버전·mask hash 일치 필수"],
+        ["비교 실패 시 출력 폴더 잔류", "모든 배열 검증 후 출력 생성"],
+        ["수렴 지표가 초기 변화·inf를 다르게 반영", "seed별 마지막 비교의 최댓값, inf 보존"],
+    ], "compact")
     + source("tests/unit / evidence/recheck.json, regression-probes.json / CODE-CHANGE-BACKLOG.md."),
 )
 
@@ -307,7 +424,7 @@ page(
         ["Python", "3.12.13 실행 근거", "대상 환경 버전 고정"],
         ["의존성", "uv.lock 존재", "대상 플랫폼 wheelhouse 준비"],
         ["신규 설치", "미측정", "빈 환경 설치 시간·로그·hash 보존"],
-        ["회귀 테스트", "279개 통과", "실제 비교 adapter 추가 시 재실행"],
+        ["회귀 테스트", "304개 통과", "실제 비교 adapter 추가 시 재실행"],
         ["실행 추적", "입력·출력 hash, git commit/dirty, build ID 기록", "clean commit 실행 보존"],
     ])
     + '''<h2>반입 후 기본 확인 절차</h2><pre>python3.12 -m venv .venv
@@ -321,23 +438,17 @@ export PYTHONPATH=src PYTHONDONTWRITEBYTECODE=1
 
 page(
     "15 / 우선순위",
-    "P0 보완을 마치고 기존 sim 실제 대조로 이동한다",
+    "코드 보완을 마치고 기존 sim 실제 대조로 이동한다",
     table(["순서", "작업", "완료 기준"], [
         ["1 · 완료", "입력·출력 계약 보완", "TR 잔여 영역, 조합 감사, open 단자, 산포/union, Fab 연결"],
-        ["2 · 완료", "회귀 검증·비교 엔진", "279개 테스트, schema·commit·출력 hash, compare-sim round-trip"],
+        ["2 · 완료", "회귀 검증·비교 엔진", "schema·commit·출력 hash, compare-sim round-trip"],
+        ["2a · 완료", "검토 결함·자동 단자 open·CNO", "결함 8건 수정, contact 파일럿 동등성, 304개 테스트"],
         ["3 · 다음", "기존 sim 실제 대조", "공통 조합 hotspot·XOR·CA 차이 분류, 신규 대각 조합은 N/A"],
         ["4 · P1", "실제품 기준·산포 pilot", "mask별 실측 overlay·CD, 64→128→256 수렴과 여러 seed"],
         ["5 · P1", "Fab 자료 사후 적용", "평균 개수/검사면적을 layer·크기별 CA에 연결"],
         ["6 · P1", "particle-sim-compare", "layer·전극·교차 위험 순위와 수기 계산 일치"],
     ])
-    + '<h2>추후 물리 검토 항목</h2>'
-    + table(["항목", "현재 처리", "추후 판단"], [
-        ["TR 신호 분리", "기하 mask 잔여 영역만 기록", "불량 판정에 전기 기능을 넣을지 결정"],
-        ["전도성/비전도성", "contact margin 0", "재질별 접촉 거리·불량 모드"],
-        ["이물 형상", "원형/구형", "타원·섬유·불규칙 형상"],
-        ["예상 불량", "기하 위험까지만", "제품 불량 자료로 변환식 검증"],
-    ])
-    + note("P0 구현 상태와 실제 비교에 남은 조건은 <code>docs/CODE-IMPLEMENTATION-PLAN.md</code>에 기록했다.")
+    + note("판정 기준·물리 모델·성능·연동에서 결정이 필요한 항목은 마지막 세 장의 <b>생각해야 할 부분</b>에 정리했다. 구현 상태와 실제 비교에 남은 조건은 <code>docs/CODE-IMPLEMENTATION-PLAN.md</code>에 기록했다.")
     + source("REVIEW-PLAN.md / CODE-CHANGE-BACKLOG.md."),
 )
 
@@ -355,11 +466,15 @@ manifest_right = """particle_source_steps:
   lands_after_layer: mask1
   fab_distribution_layer: fab_mask1
 
-electrode_pairs:
-- pair_id: gate1__data1
-  electrode_a: gate1
-  electrode_b: data1
-  failure_mode: vertical_short"""
+contacts:
+- contact_id: CNT_GI
+  path: masks/contact_GI.png
+  hole_layer: insulator1
+  applicable_particle_source_steps:
+  - after_mask1
+open_applicable_steps_by_layer:
+  mask1: []
+  mask2: [after_mask2]"""
 page(
     "16 / 입력 가이드",
     "제품 형상·산포·Fab 자료를 서로 다른 입력으로 관리한다",
@@ -369,7 +484,8 @@ page(
         ["제품 manifest + mask", "좌표·적층·전극·net·평가 조합", "전극은 layer mask의 부분집합, 같은 layer 전극끼리 비중첩"],
         ["산포 YAML", "mask별 overlay x/y·CD 분포와 근거", "첫 실제 계산은 실측값만, 변수들은 독립"],
         ["Fab 이물 표", "layer·크기 bin별 평균 개수·검사면적·기간", "시뮬레이션 후 평균 밀도로 변환"],
-        ["open 단자", "시작·도착 단자 영역 mask", "비어 있지 않고 배선 내부이며 서로 분리"],
+        ["open 단자", "시작·도착 단자 영역 mask", "비어 있지 않고 배선 내부이며 서로 분리, 이물 없이 연결"],
+        ["contacts", "contact·via mask, hole layer, CNO 적용 공정", "hole마다 아래·위 전극 1개씩, 같은 net"],
     ])
     + '<h2>입력에서 반드시 구분할 이름</h2><p><b>mask1·mask2</b>는 전극이 놓인 물리 layer이고, <b>after_mask1</b>은 이물이 들어온 시점이며, <b>fab_mask1</b>은 Fab 이물 자료가 측정된 공정 이름이다. 세 값을 같은 문자열이라고 가정하지 않는다.</p>'
     + note("YAML은 # 주석을 허용하지만 주석은 실행 hash와 결과에 전달되지 않는다. 필드 의미와 근거는 이 가이드와 run manifest에서 관리한다.")
@@ -385,7 +501,8 @@ page(
         ["ca.parquet / ca_union.parquet", "pair CA와 중복 제거 union CA", "기하 결과·수렴 확인"],
         ["risk_by_layer.parquet", "Fab layer별 union CA × 이물 밀도", "layer 위험 순위"],
         ["risk_by_pair.parquet", "Fab layer × 실제 전극 pair, raw·배분·고유 기여", "전극 조합·교차 위험 순위"],
-        ["risk_by_open_path.parquet", "open 경로별 raw·배분·고유 기여", "주요 open 경로"],
+        ["risk_by_open_path.parquet", "open 경로·자동 단자 전극별 raw·배분·고유 기여", "주요 open 경로"],
+        ["risk_by_contact.parquet", "CNO contact 연결별 기여, 위·아래 전극", "막히기 쉬운 contact"],
         ["risk_by_electrode.parquet", "개별 전극 관여 점수와 합계 일치 기여", "반복 등장하는 주요 전극"],
         ["risk_summary.csv", "layer·조합·open·전극 상위 항목", "사람이 바로 여는 검토표"],
         ["run/risk manifest", "입력·코드·schema·출력 hash와 가정", "실행 재현"],
@@ -393,6 +510,66 @@ page(
     + '<h2>현재 출력과 연동 보완</h2><p>현재 <code>ca.parquet</code>에는 실제 전극 ID가 있어 pair 분석의 기반은 있다. 다만 particle-sim-compare 내보내기는 역할·layer 중심이고, 실측 평균 이물 개수 가중과 산포 probability 내보내기가 아직 완성되지 않았다. 연동 시 실제 전극 ID·pair ID·Fab layer·배분 기여도를 구조화된 필드로 추가한다.</p>'
     + note("raw pair risk는 조합 민감도이므로 합산하지 않는다. 배분 기여도는 같은 위치의 k개 조합에 1/k를 적용해 합계가 layer union과 일치하도록 한다.")
     + source("second-test-and-io-guide §9 / CODE-CHANGE-BACKLOG §6–7 / particle-sim-compare data contract."),
+)
+
+page(
+    "생각해야 할 부분 ① 판정 기준",
+    "잠정 기준으로 구현한 판정 규칙을 확정해야 한다",
+    '<p class="lead">아래 항목은 계산은 동작하지만 <b>물리적 의미를 아직 합의하지 않은</b> 규칙이다. 실행 결과 manifest와 경고에 잠정 기준임을 기록하고 있으며, 확정되면 규칙과 회귀 테스트를 함께 바꾼다.</p>'
+    + table(["항목", "현재 (잠정)", "결정할 것", "필요한 근거"], [
+        ["CNO 가림 범위", "hole 접촉 영역을 <b>전부</b> 가려야 CNO", "일부만 가려도 불량인지, 임계 가림 비율", "접촉저항 측정, CNO FA 사례"],
+        ["병렬 contact hole", "같은 두 전극을 잇는 hole 중 하나라도 막히면 CNO", "모든 hole이 막혀야 불량인지", "설계상 hole 이중화 의도"],
+        ["net 단위 open", "전극 하나 단위로 판정", "같은 net의 다른 layer 우회 경로를 반영할지", "net 연결 그래프, contact 전수 입력"],
+        ["전류 방향·심각도", "연결 관계만 사용", "구동단·부하를 구분해 신호를 잃는 쪽을 볼지", "화소 회로·netlist"],
+        ["적용 이물 유입 공정", "open은 layer별, CNO는 contact별 명시", "적층 순서로 규칙화할 수 있는지", "공정별 이물 영향 근거"],
+        ["픽셀 연결 기준", "4-연결(대각만 닿으면 끊김)", "대각 접촉을 연결로 볼지", "mask 해상도 대비 최소 선폭"],
+        ["contact margin", "0 µm", "재질별 전기 접촉 거리", "전도성·비전도성 이물 실험"],
+    ])
+    + note("CNO 기준은 재계산 없이 바꿀 수 있도록 contact별 최대 가림 비율을 출력하는 방안도 함께 검토한다. 기준을 바꾸면 open과 CNO 사이에서 위치가 이동하므로 두 유형을 함께 재검증한다.")
+    + source("CODE-CHANGE-BACKLOG.md 11절 / failure/contact_not_open.py CNO_COVERAGE_RULE / run_manifest.json cno_coverage_rule."),
+    "dense",
+)
+
+page(
+    "생각해야 할 부분 ② TR",
+    "TR에 대한 이물 영향은 단계적으로 반영한다",
+    '<p>현재 TR은 layer mask에서 전극에 할당되지 않은 영역으로 픽셀 수와 면적만 기록한다. 반도체 분야의 Inductive Fault Analysis(IFA)는 이물 통계로 물리 결함을 만들고, 트랜지스터 수준 결함(bridge, cut, gate-oxide short)으로 바꾼 뒤 결함 유형별 critical area로 순위를 매긴다. 이 흐름을 현재 엔진에 맞춰 세 단계로 확장한다.</p>'
+    + '<div class="flow"><div><b>1단계</b><br>TR 피격을 기하 위험으로 기록 (<code>tr_hit</code>)</div><i>→</i><div><b>2단계</b><br>TR을 스위치로 보고 결함 규칙 판정</div><i>→</i><div><b>3단계</b><br>회로·화소 불량 연결과 kill ratio 보정</div></div>'
+    + table(["TR 결함 (2단계)", "기하 조건", "재사용 엔진", "전기적 의미"], [
+        ["S–D short (항상 켜짐)", "도전성 이물이 채널을 가로질러 S·D에 동시 접촉", "lateral short (S–D 조합)", "신호 분리 기능 상실"],
+        ["gate short", "이물이 게이트 절연막을 관통해 G와 S/D 또는 채널에 접촉", "vertical short", "게이트 누설 또는 short"],
+        ["채널 open (항상 꺼짐)", "채널이 S 접점과 D 접점 사이에서 끊김", "open (채널=전극, S·D 접점=단자)", "구동 불가"],
+    ])
+    + '<h2>구현 전에 확정할 사항</h2>'
+    + table(["질문", "영향"], [
+        ["TR 종류와 구조 (LTPS/Oxide, top/bottom gate)", "vertical 판정의 높이 순서"],
+        ["채널(active) mask와 S/D 접점 위치를 제공할 수 있는가", "1·2단계 입력 가능 여부"],
+        ["<code>tr_hit</code>을 union any와 분리 보고할지", "기존 결과의 의미 유지"],
+        ["결함별 kill ratio를 보정할 불량 좌표·FA 자료가 있는가", "기하 피격 → 예상 불량 변환"],
+    ])
+    + note("1단계는 기존 원판 겹침 계산으로 바로 구현할 수 있다. 채널 피격이 Vth 이동에 그칠 수도 있으므로, 보정 전까지 결과는 예상 불량률이 아니라 기하 피격 기대값으로 표시한다.")
+    + source("REVIEW-PLAN.md TR 절 / IFA 문헌: Carafe inductive fault analysis tool, Systematic Extraction of Critical Areas From IC Layouts (Springer), TFT array 결함 분류 특허 US 6982556."),
+    "dense",
+)
+
+page(
+    "생각해야 할 부분 ③ 물리·성능·연동",
+    "제품 적용 규모와 연동 전에 정할 항목",
+    table(["분야", "항목", "현재 상태", "결정 · 확인할 것"], [
+        ["물리", "이물 재질", "재질 구분 없음", "도전성·비도전성별 short·open·CNO 성립 조건"],
+        ["물리", "비원형 이물", "원형/구형", "타원·섬유·불규칙 형상과 방향각 분포"],
+        ["물리", "예상 불량 변환", "기하 위험까지만 계산", "노출 면적·기간, 이물 독립성, Poisson 가정의 제품 대조"],
+        ["Fab", "크기 분포", "대표 직경 1:1 연결", "크기 간 상관, 원본 표본의 경험분포 적분"],
+        ["성능", "산포 open 계산", "64조건 200²에서 약 5분, 조건 간 재사용 없음", "bounded 또는 disk cache 도입"],
+        ["성능", "대형 ROI", "전체 이미지 계산", "tile+halo 분할(open은 전역 연결성 대책 필요)"],
+        ["저장", "<code>pair_margin_um</code>", "padded 1000²에서 출력 621.4MB 중 621.3MB", "항상 저장·선택 출력·정밀도·압축"],
+        ["연동", "particle-sim-compare", "export는 역할·layer 중심", "전극 ID·CNO·배분 기여도와 Fab 공정 계약"],
+        ["운영", "폐쇄망 반입", "uv.lock 존재", "대상 플랫폼 wheelhouse와 빈 환경 재설치 시험"],
+    ], "compact")
+    + '<h2>다음 단계와의 관계</h2><p>실제 데이터 시험(기존 sim 동일 입력 비교 → 실제 제품 기준·산포 → Fab 적용)은 위 항목과 별개로 바로 진행할 수 있다. 다만 CNO 가림 기준과 net 단위 open은 실제 contact 입력으로 결과가 얼마나 달라지는지 확인한 뒤 확정하는 것이 효율적이다.</p>'
+    + note("우선순위 제안: ① CNO 가림 기준과 병렬 hole 규칙 → ② 산포 open cache(TAT) → ③ TR 1단계 기하 기록 → ④ 재질·형상 모델. 각 항목은 물리 근거와 완료 기준을 먼저 정한다.")
+    + source("CODE-CHANGE-BACKLOG.md 8–11절 / CODE-IMPLEMENTATION-PLAN.md 6절 / evidence/benchmark-contact-probability-200.json, padded-1000-analysis.json."),
+    "dense",
 )
 
 base_css = """@page { size: A4; margin: 18mm 16mm; }
