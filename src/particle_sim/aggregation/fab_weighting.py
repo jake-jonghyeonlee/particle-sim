@@ -134,6 +134,12 @@ def apply_fab_weighting(
             "지원합니다",
             field="bin_method",
         )
+    if table.input_semantics == "mean_per_sample":
+        # the mean table is keyed by Fab layer, while this legacy path matches source steps
+        raise InputContractError(
+            "평균 이물 개수 표는 Fab layer 기준이므로 `apply-fab --run` 경로에서만 사용합니다",
+            field="fab_data",
+        )
     for column in ("source_step", "particle_size_um", "pair_id", "failure_mode"):
         if column not in ca.columns:
             raise InputContractError(

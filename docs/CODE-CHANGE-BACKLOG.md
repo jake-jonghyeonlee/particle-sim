@@ -28,7 +28,7 @@ tile+halo와 추가 물리는 대체 판정 뒤 진행한다. 아래의 “현�
 | 9 | P2 | 결과 그림과 표시 용어 정리, 보고서 재생성 | 결과 고정 후 |
 | 10 | 보류 | TR 전기 기능, 재질별 접촉, 비원형 이물 등 추가 물리 | 측정 근거 확보 후 |
 | 11 | P0 · 구현 완료 | open 기준 연결성·단자 소실 결함 수정, contact 기반 자동 단자 open, CNO 추가 (12·13절) | 실제 제품 mask 입력 전, 기존 sim 자료 확보와 병행 |
-| 12 | P1 | 2026-09-19 검토의 비교 계약·수렴 지표·Fab 경로·임시 폴더 결함 (14절) | 기존 sim 대체 판정 전 |
+| 12 | P1 · 구현 완료 | 2026-09-19 검토의 비교 계약·수렴 지표·Fab 경로·임시 폴더 결함 (14절) | 기존 sim 대체 판정 전 |
 
 아래 절 번호는 발견 항목을 참조하기 위한 번호이며 구현 순서를 뜻하지 않는다. P0 코드 보완과 전체
 회귀 검증을 먼저 끝내고 출력 schema를 고정한 뒤 기존 `sim`과 동일 입력을 비교한다. open 고속화,
@@ -606,14 +606,18 @@ CNO는 이물이 contact·via hole을 막아 위·아래 전극이 연결되지 
 
 | 번호 | 우선순위 | 위치 | 결함 | 수정 방향 |
 |---:|---|---|---|---|
-| 3 | P1 | `comparison/legacy_sim.py:88-130` | 비교 계약에 product·mask 식별자가 없고, run manifest에 pixel 크기가 없으면 검사를 건너뜀 | 계약에 product_id·design_version·mask hash를 추가해 `input_hashes`와 대조. pixel 값이 없으면 오류 |
-| 4 | P1 | `legacy_sim.py:181-198` | shape 검증 전에 출력 폴더와 zarr를 만들어 실패 시 폴더가 남고 재실행이 막힘 | 모든 reference 배열 검증 후 출력 생성 |
+| 3 | 완료 | `comparison/legacy_sim.py:88-130` | 비교 계약에 product·mask 식별자가 없고, run manifest에 pixel 크기가 없으면 검사를 건너뜀 | 계약에 product_id·design_version·mask hash를 추가해 `input_hashes`와 대조. pixel 값이 없으면 오류 |
+| 4 | 완료 | `legacy_sim.py:181-198` | shape 검증 전에 출력 폴더와 zarr를 만들어 실패 시 폴더가 남고 재실행이 막힘 | 모든 reference 배열 검증 후 출력 생성 |
 | 5 | 완료 | `legacy_sim.py:172-180, 233-256` | open 경로가 `new_pair`로 섞이고, 적용 공정이 아닌 open 조건에도 record를 요구 | `new_unit`·`not_applicable` 상태 분리 (단계 5a에서 반영) |
-| 6 | P2 | `pipeline.py:661, 745` | `convergence_delta`가 전체 seed·prefix의 최대값이 되고 `inf`를 버림 | 마지막 비교 기준으로 통일하거나 정의를 문서화하고 `inf` 보존 |
-| 7 | P2 | `aggregation/fab_weighting.py:131-148` | 평균 이물 표를 이전 `--ca` 경로에 넣으면 공정 ID와 Fab layer를 잘못 대조 | `mean_per_sample` 표는 `--run` 경로만 허용 |
-| 8 | P2 | `pipeline.py:131, 852` | 산포 임시 mask 폴더가 예외 시 출력 폴더에 남음 | `try/finally`로 정리 |
+| 6 | 완료 | `pipeline.py:661, 745` | `convergence_delta`가 전체 seed·prefix의 최대값이 되고 `inf`를 버림 | 마지막 비교 기준으로 통일하거나 정의를 문서화하고 `inf` 보존 |
+| 7 | 완료 | `aggregation/fab_weighting.py:131-148` | 평균 이물 표를 이전 `--ca` 경로에 넣으면 공정 ID와 Fab layer를 잘못 대조 | `mean_per_sample` 표는 `--run` 경로만 허용 |
+| 8 | 완료 | `pipeline.py:131, 852` | 산포 임시 mask 폴더가 예외 시 출력 폴더에 남음 | `try/finally`로 정리 |
 
-문서 수치 정정: `pair_margin_um` 크기는 파일 크기 합 621,304,169 B = 592.5 MiB다(594 MiB는 디스크
+14절 결함은 2026-09-20에 모두 수정했다. 비교 계약은 schema 2.0으로 올리고 `product_id`,
+`design_version`, `input_hashes`를 필수로 했다. `convergence_delta`는 seed별 마지막 prefix 비교의
+최댓값이며 `inf`를 보존한다. 평균 이물 표는 `apply-fab --run`에서만 허용한다.
+
+문서 수치 정정(반영 완료): `pair_margin_um` 크기는 파일 크기 합 621,304,169 B = 592.5 MiB다(594 MiB는 디스크
 블록 사용량). `CODE-IMPLEMENTATION-PLAN.md`의 공정 간 cache 통합 RSS는 222MB다.
 
 ## 한 번에 수정할 때의 검증 묶음

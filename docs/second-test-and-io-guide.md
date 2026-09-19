@@ -315,7 +315,7 @@ open 최적화 후 ROI 크기의 영향부터 분리하기 위해 200×200 복�
 
 open은 후보와 연결 성분을 전극 bounding box 안에서 계산해 canvas의 빈 공간이 25배로 늘어도 TAT는
 1.49배 증가했다. 반면 short의 `pair_margin_um`과 hotspot 결과는 전체 ROI 배열이므로 TAT·메모리·
-출력이 더 크게 늘었다. 통합 출력 621.4MB 중 `pair_margin_um` 디렉터리가 621.3MB(594MiB)로
+출력이 더 크게 늘었다. 통합 출력 621.4MB 중 `pair_margin_um` 디렉터리가 621.3MB(592.5MiB)로
 대부분을 차지했다. binary hotspot 배열들은 압축이 잘 되지만 float32 margin 지도는 빈 영역에서도
 전체 전극 조합 축을 가진다.
 
@@ -824,7 +824,11 @@ uv run particle-sim simulate-probability \
 시나리오 YAML의 `evidence`가 `assumed`이면 결과는 가정한 산포에 조건부이며 실제 불량확률이 아니다.
 
 기존 sim 결과와 기준 조건을 비교할 때는 `configs/legacy-sim-reference.example.yaml`을 복사해 실제
-파일 경로와 모든 공통 조건을 채운 뒤 실행한다.
+파일 경로와 모든 공통 조건을 채운 뒤 실행한다. 비교 계약 schema 2.0은 `product_id`, `design_version`,
+기존 sim이 사용한 mask 파일의 `input_hashes`를 요구하며, 모두 현재 실행의 `run_manifest.json`과 같아야
+한다. 현재 실행 manifest에 pixel 크기가 없거나 reference 배열 shape이 다르면 출력 폴더를 만들기 전에
+거부한다. 기존 sim에 없던 전극 조합은 `new_pair`, open·CNO 단위는 `new_unit`, 적용 공정이 아닌 조건은
+`not_applicable`로 분류한다.
 
 ```bash
 uv run particle-sim compare-sim \

@@ -126,6 +126,21 @@ def _require_empty_output(output_dir: Path, product_id: str) -> None:
         )
 
 
+def final_convergence_delta(series_by_seed: list[list]) -> float:
+    """Worst last comparison over the seeds, matching ``is_converged`` (last prefix step).
+
+    Each seed contributes the relative change of its final prefix step (e.g. 128->256). An
+    infinite change (CA dropped to zero) is kept, not discarded, so it cannot look converged.
+    NaN means no seed had two prefixes to compare.
+    """
+    finals = [
+        series[-1].delta_previous
+        for series in series_by_seed
+        if len(series) >= 2 and not np.isnan(series[-1].delta_previous)
+    ]
+    return float(max(finals)) if finals else float("nan")
+
+
 def _distribution(values: list[float]) -> tuple[float, float, float, float]:
     array = np.asarray(values, dtype=np.float64)
     if array.size == 0:
@@ -166,7 +181,13 @@ class _ScenarioMaskProvider:
             self._memory = [apply_scenario_to_masks(manifest, masks, item) for item in scenarios]
             return
         self._temporary = tempfile.TemporaryDirectory(prefix="particle-sim-masks-", dir=output_dir)
-        directory = Path(self._temporary.name)
+        try:
+            self._pack(manifest, masks, scenarios, Path(self._temporary.name))
+        except BaseException:
+            self.close()
+            raise
+
+    def _pack(self, manifest, masks: MaskSet, scenarios, directory: Path) -> None:
         for index, scenario in enumerate(scenarios):
             transformed = apply_scenario_to_masks(manifest, masks, scenario)
             arrays = [transformed.layers[name] for name in self._layer_names]
@@ -565,351 +586,340 @@ def run_probability(
     )
 
     mask_provider = _ScenarioMaskProvider(manifest, masks, scenarios, output_dir)
-    scenario_stacks = [apply_scenario_to_stack(stack_z, scenario) for scenario in scenarios]
-    scenario_manifests = [scenario_manifest(manifest, scenario) for scenario in scenarios]
-    nominal_cache = DistanceCache(masks)
-    nominal_open_cache: OpenResultCache = {}
-    scenario_exclusions: dict[str, dict[str, int]] = {}
-    lost_holes_by_scenario: dict[int, int] = {}
-    ca_rows: list[dict] = []
-    union_rows: list[dict] = []
-    convergence_rows: list[dict] = []
-    assumption_set = scenario_config.assumption_set
+    try:
+        scenario_stacks = [apply_scenario_to_stack(stack_z, scenario) for scenario in scenarios]
+        scenario_manifests = [scenario_manifest(manifest, scenario) for scenario in scenarios]
+        nominal_cache = DistanceCache(masks)
+        nominal_open_cache: OpenResultCache = {}
+        scenario_exclusions: dict[str, dict[str, int]] = {}
+        lost_holes_by_scenario: dict[int, int] = {}
+        ca_rows: list[dict] = []
+        union_rows: list[dict] = []
+        convergence_rows: list[dict] = []
+        assumption_set = scenario_config.assumption_set
 
-    for step_index, step in enumerate(steps):
-        for size_index, diameter in enumerate(sizes):
-            unit_accumulators = {
-                unit_id: ProbabilityAccumulator(grid.shape_yx, grid) for unit_id in unit_id_list
-            }
-            union_accumulators = {
-                key: ProbabilityAccumulator(grid.shape_yx, grid) for key in union_keys
-            }
-            allocated_samples = {unit_id: [] for unit_id in unit_id_list}
-            unique_samples = {unit_id: [] for unit_id in unit_id_list}
-            for scenario_index, scenario in enumerate(scenarios):
-                s_masks = mask_provider.get(scenario_index)
-                if s_masks.contact_topology is not None:
-                    lost_holes_by_scenario[scenario_index] = s_masks.contact_topology.lost_holes
-                s_stack = scenario_stacks[scenario_index]
-                s_manifest = scenario_manifests[scenario_index]
-                diameter_um = max(diameter + scenario.particle_diameter_delta_um, 1e-9)
-                results = evaluate_units(
-                    s_manifest,
-                    s_masks,
-                    s_stack,
-                    step.step_id,
-                    diameter_um,
-                    DistanceCache(s_masks),
-                    specs=specs,
-                )
-                for unit in results:
-                    unit_accumulators[unit.pair_id].add(unit.failure, unit.pair_margin_um)
-                    if unit.classification in SCENARIO_EXCLUSIONS:
-                        key = f"{step.step_id}|{float(diameter)}|{unit.pair_id}"
-                        counts = scenario_exclusions.setdefault(key, {})
-                        counts[unit.classification] = counts.get(unit.classification, 0) + 1
-                allocation = allocate_risk(results, grid)
-                for unit_id in unit_id_list:
-                    allocated_samples[unit_id].append(allocation.allocated_ca_um2[unit_id])
-                    unique_samples[unit_id].append(allocation.unique_ca_um2[unit_id])
-                for key, union in union_by_mode(results).items():
-                    union_accumulators[key].add(union.any_failure)
+        for step_index, step in enumerate(steps):
+            for size_index, diameter in enumerate(sizes):
+                unit_accumulators = {
+                    unit_id: ProbabilityAccumulator(grid.shape_yx, grid) for unit_id in unit_id_list
+                }
+                union_accumulators = {
+                    key: ProbabilityAccumulator(grid.shape_yx, grid) for key in union_keys
+                }
+                allocated_samples = {unit_id: [] for unit_id in unit_id_list}
+                unique_samples = {unit_id: [] for unit_id in unit_id_list}
+                for scenario_index, scenario in enumerate(scenarios):
+                    s_masks = mask_provider.get(scenario_index)
+                    if s_masks.contact_topology is not None:
+                        lost_holes_by_scenario[scenario_index] = s_masks.contact_topology.lost_holes
+                    s_stack = scenario_stacks[scenario_index]
+                    s_manifest = scenario_manifests[scenario_index]
+                    diameter_um = max(diameter + scenario.particle_diameter_delta_um, 1e-9)
+                    results = evaluate_units(
+                        s_manifest,
+                        s_masks,
+                        s_stack,
+                        step.step_id,
+                        diameter_um,
+                        DistanceCache(s_masks),
+                        specs=specs,
+                    )
+                    for unit in results:
+                        unit_accumulators[unit.pair_id].add(unit.failure, unit.pair_margin_um)
+                        if unit.classification in SCENARIO_EXCLUSIONS:
+                            key = f"{step.step_id}|{float(diameter)}|{unit.pair_id}"
+                            counts = scenario_exclusions.setdefault(key, {})
+                            counts[unit.classification] = counts.get(unit.classification, 0) + 1
+                    allocation = allocate_risk(results, grid)
+                    for unit_id in unit_id_list:
+                        allocated_samples[unit_id].append(allocation.allocated_ca_um2[unit_id])
+                        unique_samples[unit_id].append(allocation.unique_ca_um2[unit_id])
+                    for key, union in union_by_mode(results).items():
+                        union_accumulators[key].add(union.any_failure)
 
-            nominal_results = {
-                r.pair_id: r
-                for r in evaluate_units(
-                    manifest,
-                    masks,
-                    stack_z,
-                    step.step_id,
-                    diameter,
-                    nominal_cache,
-                    nominal_open_cache,
-                )
-            }
-            nominal_allocation = allocate_risk(list(nominal_results.values()), grid)
-            for unit_index, unit_id in enumerate(unit_id_list):
-                accumulator = unit_accumulators[unit_id]
-                probability_map = accumulator.probability()
-                store.write_unit(
-                    step_index,
-                    size_index,
-                    unit_index,
-                    probability=probability_map,
-                    margin_mean_um=accumulator.mean_margin_um(),
-                )
-                summary = probability_ca(accumulator)
-                nominal = nominal_results[unit_id]
-                spec = spec_by_id[unit_id]
-                ca_nominal = critical_area_um2(nominal.failure, grid)
-                allocated_mean, allocated_p05, allocated_p50, allocated_p95 = _distribution(
-                    allocated_samples[unit_id]
-                )
-                unique_mean, unique_p05, unique_p50, unique_p95 = _distribution(
-                    unique_samples[unit_id]
-                )
-                offset = 0
-                unit_steps_by_seed: list = []
-                for seed_value in seed_values:
-                    seed_count = sum(item.scramble_seed == seed_value for item in scenarios)
-                    seed_samples = accumulator.scenario_ca_um2[offset : offset + seed_count]
-                    offset += seed_count
-                    seed_steps = convergence_series(_prefix_means(seed_samples))
-                    unit_steps_by_seed.extend(seed_steps)
-                    for entry in seed_steps:
-                        convergence_rows.append(
-                            {
-                                "scramble_seed": seed_value,
-                                "source_step": step.step_id,
-                                "particle_size_um": float(diameter),
-                                "pair_id": unit_id,
-                                "failure_mode": nominal.failure_mode,
-                                "scenario_count": entry.scenario_count,
-                                "ca_um2": entry.ca_um2,
-                                "delta_previous": entry.delta_previous,
-                            }
-                        )
-                ca_rows.append(
-                    {
-                        "schema_version": SCHEMA_VERSION,
-                        "run_id": run_id,
-                        "product_id": manifest.product_id,
-                        "design_version": manifest.design_version,
-                        "source_step": step.step_id,
-                        "fab_distribution_layer": step.fab_distribution_layer,
-                        "particle_size_um": float(diameter),
-                        **_unit_identity(spec, electrodes),
-                        "classification": nominal.classification,
-                        "ca_legacy_um2": float("nan"),
-                        "ca_nominal_um2": ca_nominal,
-                        "ca_allocated_nominal_um2": nominal_allocation.allocated_ca_um2[unit_id],
-                        "ca_unique_nominal_um2": nominal_allocation.unique_ca_um2[unit_id],
-                        "ca_nominal_mm2": um2_to_mm2(ca_nominal),
-                        "ca_nominal_normalized": normalized_ca(ca_nominal, grid),
-                        "ca_mean_um2": summary.ca_probability_mean_um2,
-                        "ca_p05_um2": summary.ca_p05_um2,
-                        "ca_p50_um2": summary.ca_p50_um2,
-                        "ca_p95_um2": summary.ca_p95_um2,
-                        "ca_allocated_mean_um2": allocated_mean,
-                        "ca_allocated_p05_um2": allocated_p05,
-                        "ca_allocated_p50_um2": allocated_p50,
-                        "ca_allocated_p95_um2": allocated_p95,
-                        "ca_unique_mean_um2": unique_mean,
-                        "ca_unique_p05_um2": unique_p05,
-                        "ca_unique_p50_um2": unique_p50,
-                        "ca_unique_p95_um2": unique_p95,
-                        "scenario_count": summary.scenario_count,
-                        "convergence_delta": max(
-                            (
-                                item.delta_previous
-                                for item in unit_steps_by_seed
-                                if np.isfinite(item.delta_previous)
-                            ),
-                            default=float("nan"),
-                        ),
-                        "assumption_set": assumption_set,
-                        "simulator_version": __version__,
-                    }
-                )
-
-            for union_index, key in enumerate(union_keys):
-                accumulator = union_accumulators[key]
-                union_probability = accumulator.probability()
-                offset = 0
-                union_steps_by_seed: list = []
-                for seed_value in seed_values:
-                    seed_count = sum(item.scramble_seed == seed_value for item in scenarios)
-                    seed_samples = accumulator.scenario_ca_um2[offset : offset + seed_count]
-                    offset += seed_count
-                    seed_steps = convergence_series(_prefix_means(seed_samples))
-                    union_steps_by_seed.extend(seed_steps)
-                    for entry in seed_steps:
-                        convergence_rows.append(
-                            {
-                                "scramble_seed": seed_value,
-                                "source_step": step.step_id,
-                                "particle_size_um": float(diameter),
-                                "pair_id": f"union:{key}",
-                                "failure_mode": key,
-                                "scenario_count": entry.scenario_count,
-                                "ca_um2": entry.ca_um2,
-                                "delta_previous": entry.delta_previous,
-                            }
-                        )
-                store.write_union(
-                    step_index, size_index, union_index, probability=union_probability
-                )
-                summary = probability_ca(accumulator)
-                nominal_union = union_by_mode(list(nominal_results.values()))[key]
-                ca_union_nominal = critical_area_um2(nominal_union.any_failure, grid)
-                member_ids = [
-                    unit_id
-                    for unit_id, mode in zip(unit_id_list, unit_mode_list, strict=True)
-                    if key in (ANY_MODE, mode)
-                ]
-                union_rows.append(
-                    {
-                        "schema_version": SCHEMA_VERSION,
-                        "run_id": run_id,
-                        "product_id": manifest.product_id,
-                        "design_version": manifest.design_version,
-                        "source_step": step.step_id,
-                        "fab_distribution_layer": step.fab_distribution_layer,
-                        "particle_size_um": float(diameter),
-                        "failure_mode": key,
-                        "union_scope": "all_failure_modes" if key == ANY_MODE else "failure_mode",
-                        "pair_ids": ";".join(member_ids),
-                        "failure_unit_ids": ";".join(member_ids),
-                        "ca_union_legacy_um2": float("nan"),
-                        "ca_union_nominal_um2": ca_union_nominal,
-                        "ca_union_nominal_normalized": normalized_ca(
-                            ca_union_nominal, grid
-                        ),
-                        "ca_pair_sum_nominal_um2": float(
-                            sum(
-                                critical_area_um2(nominal_results[unit_id].failure, grid)
-                                for unit_id in member_ids
+                nominal_results = {
+                    r.pair_id: r
+                    for r in evaluate_units(
+                        manifest,
+                        masks,
+                        stack_z,
+                        step.step_id,
+                        diameter,
+                        nominal_cache,
+                        nominal_open_cache,
+                    )
+                }
+                nominal_allocation = allocate_risk(list(nominal_results.values()), grid)
+                for unit_index, unit_id in enumerate(unit_id_list):
+                    accumulator = unit_accumulators[unit_id]
+                    probability_map = accumulator.probability()
+                    store.write_unit(
+                        step_index,
+                        size_index,
+                        unit_index,
+                        probability=probability_map,
+                        margin_mean_um=accumulator.mean_margin_um(),
+                    )
+                    summary = probability_ca(accumulator)
+                    nominal = nominal_results[unit_id]
+                    spec = spec_by_id[unit_id]
+                    ca_nominal = critical_area_um2(nominal.failure, grid)
+                    allocated_mean, allocated_p05, allocated_p50, allocated_p95 = _distribution(
+                        allocated_samples[unit_id]
+                    )
+                    unique_mean, unique_p05, unique_p50, unique_p95 = _distribution(
+                        unique_samples[unit_id]
+                    )
+                    offset = 0
+                    unit_steps_by_seed: list = []
+                    for seed_value in seed_values:
+                        seed_count = sum(item.scramble_seed == seed_value for item in scenarios)
+                        seed_samples = accumulator.scenario_ca_um2[offset : offset + seed_count]
+                        offset += seed_count
+                        seed_steps = convergence_series(_prefix_means(seed_samples))
+                        unit_steps_by_seed.append(seed_steps)
+                        for entry in seed_steps:
+                            convergence_rows.append(
+                                {
+                                    "scramble_seed": seed_value,
+                                    "source_step": step.step_id,
+                                    "particle_size_um": float(diameter),
+                                    "pair_id": unit_id,
+                                    "failure_mode": nominal.failure_mode,
+                                    "scenario_count": entry.scenario_count,
+                                    "ca_um2": entry.ca_um2,
+                                    "delta_previous": entry.delta_previous,
+                                }
                             )
-                        ),
-                        "ca_union_mean_um2": summary.ca_probability_mean_um2,
-                        "ca_union_p05_um2": summary.ca_p05_um2,
-                        "ca_union_p50_um2": summary.ca_p50_um2,
-                        "ca_union_p95_um2": summary.ca_p95_um2,
-                        "ca_raw_unit_sum_mean_um2": float(
-                            sum(
-                                probability_ca(unit_accumulators[unit_id])
-                                .ca_probability_mean_um2
-                                for unit_id in member_ids
+                    ca_rows.append(
+                        {
+                            "schema_version": SCHEMA_VERSION,
+                            "run_id": run_id,
+                            "product_id": manifest.product_id,
+                            "design_version": manifest.design_version,
+                            "source_step": step.step_id,
+                            "fab_distribution_layer": step.fab_distribution_layer,
+                            "particle_size_um": float(diameter),
+                            **_unit_identity(spec, electrodes),
+                            "classification": nominal.classification,
+                            "ca_legacy_um2": float("nan"),
+                            "ca_nominal_um2": ca_nominal,
+                            "ca_allocated_nominal_um2": nominal_allocation.allocated_ca_um2[unit_id],
+                            "ca_unique_nominal_um2": nominal_allocation.unique_ca_um2[unit_id],
+                            "ca_nominal_mm2": um2_to_mm2(ca_nominal),
+                            "ca_nominal_normalized": normalized_ca(ca_nominal, grid),
+                            "ca_mean_um2": summary.ca_probability_mean_um2,
+                            "ca_p05_um2": summary.ca_p05_um2,
+                            "ca_p50_um2": summary.ca_p50_um2,
+                            "ca_p95_um2": summary.ca_p95_um2,
+                            "ca_allocated_mean_um2": allocated_mean,
+                            "ca_allocated_p05_um2": allocated_p05,
+                            "ca_allocated_p50_um2": allocated_p50,
+                            "ca_allocated_p95_um2": allocated_p95,
+                            "ca_unique_mean_um2": unique_mean,
+                            "ca_unique_p05_um2": unique_p05,
+                            "ca_unique_p50_um2": unique_p50,
+                            "ca_unique_p95_um2": unique_p95,
+                            "scenario_count": summary.scenario_count,
+                            "convergence_delta": final_convergence_delta(unit_steps_by_seed),
+                            "assumption_set": assumption_set,
+                            "simulator_version": __version__,
+                        }
+                    )
+
+                for union_index, key in enumerate(union_keys):
+                    accumulator = union_accumulators[key]
+                    union_probability = accumulator.probability()
+                    offset = 0
+                    union_steps_by_seed: list = []
+                    for seed_value in seed_values:
+                        seed_count = sum(item.scramble_seed == seed_value for item in scenarios)
+                        seed_samples = accumulator.scenario_ca_um2[offset : offset + seed_count]
+                        offset += seed_count
+                        seed_steps = convergence_series(_prefix_means(seed_samples))
+                        union_steps_by_seed.append(seed_steps)
+                        for entry in seed_steps:
+                            convergence_rows.append(
+                                {
+                                    "scramble_seed": seed_value,
+                                    "source_step": step.step_id,
+                                    "particle_size_um": float(diameter),
+                                    "pair_id": f"union:{key}",
+                                    "failure_mode": key,
+                                    "scenario_count": entry.scenario_count,
+                                    "ca_um2": entry.ca_um2,
+                                    "delta_previous": entry.delta_previous,
+                                }
                             )
-                        ),
-                        "scenario_count": summary.scenario_count,
-                        "convergence_delta": max(
-                            (
-                                item.delta_previous
-                                for item in union_steps_by_seed
-                                if np.isfinite(item.delta_previous)
+                    store.write_union(
+                        step_index, size_index, union_index, probability=union_probability
+                    )
+                    summary = probability_ca(accumulator)
+                    nominal_union = union_by_mode(list(nominal_results.values()))[key]
+                    ca_union_nominal = critical_area_um2(nominal_union.any_failure, grid)
+                    member_ids = [
+                        unit_id
+                        for unit_id, mode in zip(unit_id_list, unit_mode_list, strict=True)
+                        if key in (ANY_MODE, mode)
+                    ]
+                    union_rows.append(
+                        {
+                            "schema_version": SCHEMA_VERSION,
+                            "run_id": run_id,
+                            "product_id": manifest.product_id,
+                            "design_version": manifest.design_version,
+                            "source_step": step.step_id,
+                            "fab_distribution_layer": step.fab_distribution_layer,
+                            "particle_size_um": float(diameter),
+                            "failure_mode": key,
+                            "union_scope": "all_failure_modes" if key == ANY_MODE else "failure_mode",
+                            "pair_ids": ";".join(member_ids),
+                            "failure_unit_ids": ";".join(member_ids),
+                            "ca_union_legacy_um2": float("nan"),
+                            "ca_union_nominal_um2": ca_union_nominal,
+                            "ca_union_nominal_normalized": normalized_ca(
+                                ca_union_nominal, grid
                             ),
-                            default=float("nan"),
-                        ),
-                        "assumption_set": assumption_set,
-                        "simulator_version": __version__,
-                    }
-                )
+                            "ca_pair_sum_nominal_um2": float(
+                                sum(
+                                    critical_area_um2(nominal_results[unit_id].failure, grid)
+                                    for unit_id in member_ids
+                                )
+                            ),
+                            "ca_union_mean_um2": summary.ca_probability_mean_um2,
+                            "ca_union_p05_um2": summary.ca_p05_um2,
+                            "ca_union_p50_um2": summary.ca_p50_um2,
+                            "ca_union_p95_um2": summary.ca_p95_um2,
+                            "ca_raw_unit_sum_mean_um2": float(
+                                sum(
+                                    probability_ca(unit_accumulators[unit_id])
+                                    .ca_probability_mean_um2
+                                    for unit_id in member_ids
+                                )
+                            ),
+                            "scenario_count": summary.scenario_count,
+                            "convergence_delta": final_convergence_delta(union_steps_by_seed),
+                            "assumption_set": assumption_set,
+                            "simulator_version": __version__,
+                        }
+                    )
 
-    write_table(ca_rows, CA_COLUMNS, result.ca_table)
-    write_table(union_rows, UNION_CA_COLUMNS, result.union_table)
-    with result.convergence.open("w", newline="", encoding="utf-8") as handle:
-        writer = csv.DictWriter(handle, fieldnames=list(CONVERGENCE_COLUMNS))
-        writer.writeheader()
-        writer.writerows(convergence_rows)
+        write_table(ca_rows, CA_COLUMNS, result.ca_table)
+        write_table(union_rows, UNION_CA_COLUMNS, result.union_table)
+        with result.convergence.open("w", newline="", encoding="utf-8") as handle:
+            writer = csv.DictWriter(handle, fieldnames=list(CONVERGENCE_COLUMNS))
+            writer.writeheader()
+            writer.writerows(convergence_rows)
 
-    input_hashes = dict(masks.input_hashes)
-    input_hashes["manifest"] = file_sha256(manifest_path)
-    input_hashes["scenario"] = file_sha256(Path(scenario_path))
-    run_manifest = build_run_manifest(
-        run_id=run_id,
-        product_id=manifest.product_id,
-        design_version=manifest.design_version,
-        config_hash=canonical_hash(
+        input_hashes = dict(masks.input_hashes)
+        input_hashes["manifest"] = file_sha256(manifest_path)
+        input_hashes["scenario"] = file_sha256(Path(scenario_path))
+        run_manifest = build_run_manifest(
+            run_id=run_id,
+            product_id=manifest.product_id,
+            design_version=manifest.design_version,
+            config_hash=canonical_hash(
+                {
+                    "manifest": manifest.model_dump(mode="json"),
+                    "scenario": scenario_config.model_dump(mode="json"),
+                }
+            ),
+            input_hashes=input_hashes,
+            particle_sizes_um=[float(s) for s in sizes],
+            source_steps=[s.step_id for s in steps],
+            assumption_set=assumption_set,
+            warnings=[*todo_physics_warnings(manifest), *scenario_warnings(scenario_config)],
+            legacy_kernel=manifest.legacy_kernel.model_dump(mode="json"),
+            post_step_policy=manifest.post_step_policy.model_dump(mode="json"),
+            created_at=created_at,
+            git_commit=None,
+        )
+        run_manifest["random_seed"] = seed
+        run_manifest["random_seeds"] = seed_values
+        run_manifest["sobol_exponent_m"] = sobol_exponent_m
+        run_manifest["scenario_count"] = len(scenarios)
+        run_manifest["value_semantics"] = PROBABILITY_SEMANTICS
+        run_manifest["scenario_mask_storage"] = mask_provider.storage
+        run_manifest["scenario_exclusions"] = [
             {
-                "manifest": manifest.model_dump(mode="json"),
-                "scenario": scenario_config.model_dump(mode="json"),
+                "source_step": key.split("|")[0],
+                "particle_size_um": float(key.split("|")[1]),
+                "failure_unit_id": key.split("|", 2)[2],
+                "classification_counts": counts,
             }
-        ),
-        input_hashes=input_hashes,
-        particle_sizes_um=[float(s) for s in sizes],
-        source_steps=[s.step_id for s in steps],
-        assumption_set=assumption_set,
-        warnings=[*todo_physics_warnings(manifest), *scenario_warnings(scenario_config)],
-        legacy_kernel=manifest.legacy_kernel.model_dump(mode="json"),
-        post_step_policy=manifest.post_step_policy.model_dump(mode="json"),
-        created_at=created_at,
-        git_commit=None,
-    )
-    run_manifest["random_seed"] = seed
-    run_manifest["random_seeds"] = seed_values
-    run_manifest["sobol_exponent_m"] = sobol_exponent_m
-    run_manifest["scenario_count"] = len(scenarios)
-    run_manifest["value_semantics"] = PROBABILITY_SEMANTICS
-    run_manifest["scenario_mask_storage"] = mask_provider.storage
-    run_manifest["scenario_exclusions"] = [
-        {
-            "source_step": key.split("|")[0],
-            "particle_size_um": float(key.split("|")[1]),
-            "failure_unit_id": key.split("|", 2)[2],
-            "classification_counts": counts,
-        }
-        for key, counts in sorted(scenario_exclusions.items())
-    ]
-    run_manifest["scenario_contact_lost_holes"] = {
-        "scenarios_with_lost_holes": sum(1 for n in lost_holes_by_scenario.values() if n),
-        "max_lost_holes": max(lost_holes_by_scenario.values(), default=0),
-    }
-    if scenario_exclusions:
-        run_manifest["warnings"] = [
-            *run_manifest.get("warnings", []),
-            "SCENARIO_EXCLUSION: 기준 단선·단자 소실·contact 소실 조건은 이물 기인 CA에서 "
-            "제외했습니다. scenario_exclusions를 확인하세요",
+            for key, counts in sorted(scenario_exclusions.items())
         ]
-    run_manifest["estimated_eager_mask_bytes"] = mask_provider.estimated_eager_bytes
-    run_manifest["convergence_tolerance"] = convergence_tolerance
-    if convergence_tolerance is not None:
-        by_series: dict[tuple, dict[int, float]] = {}
-        for row in convergence_rows:
-            key = (
-                row["scramble_seed"],
-                row["source_step"],
-                row["particle_size_um"],
-                row["pair_id"],
-            )
-            by_series.setdefault(key, {})[int(row["scenario_count"])] = float(row["ca_um2"])
-        not_converged = []
-        undecidable = 0
-        for key, samples in by_series.items():
-            steps_for_key = convergence_series(samples)
-            comparable = [s for s in steps_for_key if np.isfinite(s.delta_previous)]
-            if not comparable:
-                # a single scenario count cannot be compared with anything
-                undecidable += 1
-                continue
-            if not is_converged(steps_for_key, convergence_tolerance):
-                not_converged.append(
-                    {
-                        "scramble_seed": key[0],
-                        "source_step": key[1],
-                        "particle_size_um": key[2],
-                        "pair_id": key[3],
-                    }
+        run_manifest["scenario_contact_lost_holes"] = {
+            "scenarios_with_lost_holes": sum(1 for n in lost_holes_by_scenario.values() if n),
+            "max_lost_holes": max(lost_holes_by_scenario.values(), default=0),
+        }
+        if scenario_exclusions:
+            run_manifest["warnings"] = [
+                *run_manifest.get("warnings", []),
+                "SCENARIO_EXCLUSION: 기준 단선·단자 소실·contact 소실 조건은 이물 기인 CA에서 "
+                "제외했습니다. scenario_exclusions를 확인하세요",
+            ]
+        run_manifest["estimated_eager_mask_bytes"] = mask_provider.estimated_eager_bytes
+        run_manifest["convergence_tolerance"] = convergence_tolerance
+        if convergence_tolerance is not None:
+            by_series: dict[tuple, dict[int, float]] = {}
+            for row in convergence_rows:
+                key = (
+                    row["scramble_seed"],
+                    row["source_step"],
+                    row["particle_size_um"],
+                    row["pair_id"],
                 )
-        run_manifest["convergence_not_met"] = not_converged
-        run_manifest["convergence_undecidable"] = undecidable
-        if undecidable:
-            run_manifest["warnings"] = [
-                *run_manifest["warnings"],
-                f"CONVERGENCE: 비교할 시나리오 수가 하나뿐이라 판정할 수 없는 계열 "
-                f"{undecidable}개가 있습니다(sobol-m을 7 이상으로 올리십시오)",
-            ]
-        if not_converged:
-            run_manifest["warnings"] = [
-                *run_manifest["warnings"],
-                f"CONVERGENCE: 허용 오차 {convergence_tolerance}를 만족하지 못한 계열 "
-                f"{len(not_converged)}개가 있습니다",
-            ]
-    run_manifest["layer_unassigned_pixels"] = dict(masks.layer_unassigned_pixels or {})
-    if manifest.contacts:
-        run_manifest["cno_coverage_rule"] = CNO_COVERAGE_RULE
-    run_manifest["input_schema_versions"] = {
-        "product_manifest": manifest.schema_version,
-        "scenario": scenario_config.schema_version,
-    }
-    run_manifest["scenario_evidence"] = scenario_config.model_dump(mode="json")
-    run_manifest["shape_yx"] = list(grid.shape_yx)
-    run_manifest["pixel_size_x_um"] = grid.pixel_size_x_um
-    run_manifest["pixel_size_y_um"] = grid.pixel_size_y_um
-    run_manifest["artifacts"] = artifact_records(
-        [result.probability, result.ca_table, result.union_table, result.convergence],
-        base=output_dir,
-    )
-    write_json(run_manifest, result.run_manifest)
-    mask_provider.close()
+                by_series.setdefault(key, {})[int(row["scenario_count"])] = float(row["ca_um2"])
+            not_converged = []
+            undecidable = 0
+            for key, samples in by_series.items():
+                steps_for_key = convergence_series(samples)
+                comparable = [s for s in steps_for_key if np.isfinite(s.delta_previous)]
+                if not comparable:
+                    # a single scenario count cannot be compared with anything
+                    undecidable += 1
+                    continue
+                if not is_converged(steps_for_key, convergence_tolerance):
+                    not_converged.append(
+                        {
+                            "scramble_seed": key[0],
+                            "source_step": key[1],
+                            "particle_size_um": key[2],
+                            "pair_id": key[3],
+                        }
+                    )
+            run_manifest["convergence_not_met"] = not_converged
+            run_manifest["convergence_undecidable"] = undecidable
+            if undecidable:
+                run_manifest["warnings"] = [
+                    *run_manifest["warnings"],
+                    f"CONVERGENCE: 비교할 시나리오 수가 하나뿐이라 판정할 수 없는 계열 "
+                    f"{undecidable}개가 있습니다(sobol-m을 7 이상으로 올리십시오)",
+                ]
+            if not_converged:
+                run_manifest["warnings"] = [
+                    *run_manifest["warnings"],
+                    f"CONVERGENCE: 허용 오차 {convergence_tolerance}를 만족하지 못한 계열 "
+                    f"{len(not_converged)}개가 있습니다",
+                ]
+        run_manifest["layer_unassigned_pixels"] = dict(masks.layer_unassigned_pixels or {})
+        if manifest.contacts:
+            run_manifest["cno_coverage_rule"] = CNO_COVERAGE_RULE
+        run_manifest["input_schema_versions"] = {
+            "product_manifest": manifest.schema_version,
+            "scenario": scenario_config.schema_version,
+        }
+        run_manifest["scenario_evidence"] = scenario_config.model_dump(mode="json")
+        run_manifest["shape_yx"] = list(grid.shape_yx)
+        run_manifest["pixel_size_x_um"] = grid.pixel_size_x_um
+        run_manifest["pixel_size_y_um"] = grid.pixel_size_y_um
+        run_manifest["artifacts"] = artifact_records(
+            [result.probability, result.ca_table, result.union_table, result.convergence],
+            base=output_dir,
+        )
+        write_json(run_manifest, result.run_manifest)
+    finally:
+        # the packed masks live under output_dir; never leave them behind on failure
+        mask_provider.close()
     return result

@@ -424,3 +424,33 @@ def test_anisotropic_cd_bias_grows_each_axis_physically() -> None:
     cols = np.where(grown.any(axis=0))[0]
     assert rows.min() == 3 and rows.max() == 16  # 0.5 um = 1 px at 1.0 um/px
     assert cols.min() == 2 and cols.max() == 17  # 0.5 um = 2 px at 0.25 um/px
+
+
+def test_final_convergence_delta_uses_last_step_and_keeps_infinity() -> None:
+    from particle_sim.pipeline import final_convergence_delta
+
+    seed_a = convergence_series({64: 100.0, 128: 50.0, 256: 52.0})  # early 1.0, last ~0.038
+    seed_b = convergence_series({64: 10.0, 128: 10.0, 256: 10.5})
+    assert final_convergence_delta([seed_a, seed_b]) == pytest.approx(0.5 / 10.5)
+    dropped = convergence_series({64: 1.0, 128: 1.0, 256: 0.0})
+    assert final_convergence_delta([seed_a, dropped]) == float("inf")
+    assert np.isnan(final_convergence_delta([convergence_series({64: 1.0})]))
+
+
+def test_packed_masks_are_removed_when_the_run_fails(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from particle_sim import pipeline
+
+    manifest_path = write_case(build_case("pilot"), tmp_path / "case")
+    scenario_path = _scenario_file(tmp_path, NOMINAL_SCENARIO, "nominal.yaml")
+    monkeypatch.setattr(pipeline._ScenarioMaskProvider, "MEMORY_LIMIT_BYTES", 0)
+
+    def boom(*_args, **_kwargs):
+        raise RuntimeError("stop")
+
+    monkeypatch.setattr(pipeline, "evaluate_units", boom)
+    output = tmp_path / "run"
+    with pytest.raises(RuntimeError, match="stop"):
+        run_probability(manifest_path, scenario_path, output, sobol_exponent_m=2, seed=1)
+    assert not list(output.glob("particle-sim-masks-*"))

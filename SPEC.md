@@ -37,7 +37,8 @@ layer·전극 조합·open·개별 전극 위험도다. 이 값은 기하 접촉
 
 - `simulate-nominal`: 명목 hotspot, CA, union, 내부 legacy kernel 참고값.
 - `compare-sim`: 외부 기존 sim의 2-D binary 결과를 명시적 좌표 계약으로 읽어 공통 항목의 XOR와
-  CA 차이를 계산한다. 기존 sim에 없던 불량 단위는 `new_pair`로 구분한다.
+  CA 차이를 계산한다. 비교 계약은 제품·설계 버전·mask hash가 현재 실행과 같아야 한다. 기존 sim에
+  없던 전극 조합은 `new_pair`, open·CNO 단위는 `new_unit`, 적용 공정이 아닌 조건은 `not_applicable`이다.
 - `simulate-probability`: Sobol scramble seed별 공정 산포 조건을 생성하고 조건별 판정 후 평균과
   p05/p50/p95를 계산한다. 여러 seed와 수렴 결과를 manifest에 남긴다.
 - `apply-fab --run`: `risk_by_layer`, `risk_by_pair`, `risk_by_open_path`, `risk_by_electrode`,

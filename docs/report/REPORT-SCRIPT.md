@@ -1899,7 +1899,7 @@ open TAT는 54.3%, 통합 TAT는 50.7% 감소했다. 수정 후에도 open은 �
 | 통합 | 16.385초 | 3.70배 | 843.6 MB | 621.4 MB |
 
 open 연결성은 전극 bounding box 안에서 계산하므로 빈 ROI 증가의 영향이 작았다. 통합 출력
-621.4MB 중 float32 `pair_margin_um` 지도가 621.3MB(594MiB)를 차지했다. Zarr 공간 chunk를
+621.4MB 중 float32 `pair_margin_um` 지도가 621.3MB(592.5MiB)를 차지했다. Zarr 공간 chunk를
 512에서 1024로 키운 탐색은 출력이 502.1MB로 줄었지만 TAT 17.673초, 최대 RSS 920.0MB로
 악화돼 적용하지 않았다. 이 padded 시험은 긴 배선이나 실제 제품 layout을 대표하지 않는다.
 

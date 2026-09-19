@@ -460,7 +460,16 @@ def test_legacy_compare_marks_new_units_and_not_applicable(tmp_path: Path) -> No
     config.write_text(
         yaml.safe_dump(
             {
-                "schema_version": "1.0",
+                "schema_version": "2.0",
+                "product_id": "SYN_CONTACT",
+                "design_version": "V01",
+                "input_hashes": {
+                    name: digest
+                    for name, digest in json.loads(
+                        run.run_manifest.read_text(encoding="utf-8")
+                    )["input_hashes"].items()
+                    if name.startswith("masks/")
+                },
                 "axes": "yx",
                 "origin": "upper_left",
                 "pixel_size_x_um": PIXEL_UM,

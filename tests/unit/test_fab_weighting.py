@@ -337,3 +337,36 @@ def test_mean_particle_count_optional_provenance(tmp_path: Path) -> None:
     pd.DataFrame([row]).to_csv(path, index=False)
     with pytest.raises(InputContractError, match="sample_count"):
         load_fab_table(path, bin_method="exact_point")
+
+
+def test_mean_particle_table_is_rejected_on_the_legacy_ca_path(tmp_path: Path) -> None:
+    frame = pd.DataFrame(
+        [
+            {
+                "fab_id": "FAB_A",
+                "product_family": "F1",
+                "fab_distribution_layer": "S1",
+                "size_bin_left_um": 1.0,
+                "size_bin_right_um": 3.0,
+                "size_representative_um": 2.0,
+                "mean_particle_count": 2.5,
+                "inspection_area_per_sample_mm2": 50.0,
+                "measurement_period": "2026-09",
+                "mean_density_per_mm2": np.nan,
+                "particle_type": "unknown",
+            }
+        ],
+        columns=list(FAB_MEAN_COLUMNS),
+    )
+    path = tmp_path / "mean.csv"
+    frame.to_csv(path, index=False)
+    with pytest.raises(InputContractError, match="--run"):
+        apply_fab_weighting(
+            _ca_frame(sizes=(2.0,)),
+            load_fab_table(path, bin_method="exact_point"),
+            weighting_mode="actual",
+            fab_id="FAB_A",
+            product_family="F1",
+            run_id="R",
+            product_id="P",
+        )

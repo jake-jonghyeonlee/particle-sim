@@ -93,6 +93,35 @@ def _not_applicable_keys(run_dir: Path) -> set[tuple[str, float, str]]:
     }
 
 
+def _check_same_product(config: dict, run_manifest: dict, reference_config: Path) -> None:
+    """The reference must come from the same product, design and mask files as the run."""
+    for field in ("product_id", "design_version"):
+        if str(config[field]) != str(run_manifest.get(field)):
+            raise InputContractError(
+                f"기존 sim과 현재 실행의 {field}가 다릅니다: "
+                f"reference={config[field]}, current={run_manifest.get(field)}",
+                file=str(reference_config),
+                field=field,
+            )
+    hashes = config["input_hashes"]
+    if not isinstance(hashes, dict) or not hashes:
+        raise InputContractError(
+            "input_hashes에 기존 sim이 사용한 mask 파일의 sha256을 하나 이상 적어야 합니다",
+            file=str(reference_config),
+            field="input_hashes",
+        )
+    current = run_manifest.get("input_hashes", {})
+    mismatched = sorted(
+        name for name, digest in hashes.items() if str(current.get(name)) != str(digest)
+    )
+    if mismatched:
+        raise InputContractError(
+            f"기존 sim과 현재 실행의 입력 mask가 다릅니다: {mismatched}",
+            file=str(reference_config),
+            field="input_hashes",
+        )
+
+
 def compare_legacy_sim(reference_config: Path, run_dir: Path, output_dir: Path) -> Path:
     """기존 sim과 nominal hotspot을 공통 항목에서 비교하고 신규 조합을 분리한다."""
     reference_config = Path(reference_config)
@@ -104,8 +133,8 @@ def compare_legacy_sim(reference_config: Path, run_dir: Path, output_dir: Path) 
         )
     config = _load_config(reference_config)
     required = {
-        "schema_version", "axes", "origin", "pixel_size_x_um", "pixel_size_y_um",
-        "particle_size_definition", "records",
+        "schema_version", "product_id", "design_version", "input_hashes", "axes", "origin",
+        "pixel_size_x_um", "pixel_size_y_um", "particle_size_definition", "records",
     }
     missing = sorted(required - set(config))
     if missing:
@@ -114,9 +143,10 @@ def compare_legacy_sim(reference_config: Path, run_dir: Path, output_dir: Path) 
             file=str(reference_config),
             field=missing[0],
         )
-    if str(config["schema_version"]) != "1.0":
+    if str(config["schema_version"]) != "2.0":
         raise InputContractError(
-            "기존 sim 비교 설정 schema_version은 1.0이어야 합니다",
+            "기존 sim 비교 설정 schema_version은 2.0이어야 합니다 "
+            "(product_id, design_version, input_hashes 필요)",
             file=str(reference_config),
             field="schema_version",
         )
@@ -137,15 +167,17 @@ def compare_legacy_sim(reference_config: Path, run_dir: Path, output_dir: Path) 
         store = zarr.open_group(run_dir / "hotspots.zarr", mode="r")
     except (OSError, ValueError) as exc:
         raise InputContractError(f"비교할 실행 결과를 읽을 수 없습니다: {exc}", field="run") from exc
-    pixel_x = float(run_manifest.get("pixel_size_x_um", config["pixel_size_x_um"]))
-    pixel_y = float(run_manifest.get("pixel_size_y_um", config["pixel_size_y_um"]))
-    # Older manifests did not store each axis, so derive it from CA normalization only when config
-    # and stored array shape agree. New manifests always provide the explicit values.
-    if "pixel_size_x_um" in run_manifest:
-        if not np.isclose(pixel_x, float(config["pixel_size_x_um"])) or not np.isclose(
-            pixel_y, float(config["pixel_size_y_um"])
-        ):
-            raise InputContractError("기존 sim과 현재 실행의 pixel 크기가 다릅니다", field="pixel_size")
+    _check_same_product(config, run_manifest, reference_config)
+    if "pixel_size_x_um" not in run_manifest or "pixel_size_y_um" not in run_manifest:
+        raise InputContractError(
+            "현재 실행 manifest에 pixel 크기가 없어 비교할 수 없습니다", field="pixel_size"
+        )
+    pixel_x = float(run_manifest["pixel_size_x_um"])
+    pixel_y = float(run_manifest["pixel_size_y_um"])
+    if not np.isclose(pixel_x, float(config["pixel_size_x_um"])) or not np.isclose(
+        pixel_y, float(config["pixel_size_y_um"])
+    ):
+        raise InputContractError("기존 sim과 현재 실행의 pixel 크기가 다릅니다", field="pixel_size")
     steps = list(store.attrs["source_steps"])
     sizes = [float(item) for item in store.attrs["particle_sizes_um"]]
     units = list(store.attrs.get("failure_unit_ids", store.attrs.get("pair_ids", [])))
@@ -153,6 +185,7 @@ def compare_legacy_sim(reference_config: Path, run_dir: Path, output_dir: Path) 
     kinds = list(store.attrs.get("unit_kinds", ["electrode_pair"] * len(units)))
     not_applicable = _not_applicable_keys(run_dir)
     candidate = store["nominal_failure"]
+    shape = tuple(candidate.shape[-2:])
     index = {
         (step, size, unit): (step_i, size_i, unit_i)
         for step_i, step in enumerate(steps)
@@ -181,6 +214,11 @@ def compare_legacy_sim(reference_config: Path, run_dir: Path, output_dir: Path) 
         if key in reference_by_key:
             raise InputContractError(f"기존 sim record가 중복됩니다: {key}", field="records")
         array = _reference_array(reference_config, relative)
+        if array.shape != shape:
+            raise InputContractError(
+                f"hotspot shape가 다릅니다: reference={array.shape}, current={shape} ({relative})",
+                field="shape",
+            )
         reference_by_key[key] = (array, relative)
         reference_hashes[relative] = file_sha256(reference_config.parent / relative)
 
@@ -204,22 +242,16 @@ def compare_legacy_sim(reference_config: Path, run_dir: Path, output_dir: Path) 
         )
     output_dir.mkdir(parents=True, exist_ok=True)
     common_keys = sorted(reference_by_key)
-    shape = tuple(candidate.shape[-2:])
     diff_store = zarr.open_group(output_dir / "comparison_maps.zarr", mode="w-")
     chunks = (1, min(512, shape[0]), min(512, shape[1]))
     for name in ("intersection", "reference_only", "candidate_only", "xor"):
         diff_store.create_array(name, shape=(len(common_keys), *shape), dtype="uint8", chunks=chunks)
     rows: list[dict] = []
-    pixel_area = float(config["pixel_size_x_um"]) * float(config["pixel_size_y_um"])
+    pixel_area = pixel_x * pixel_y
     for row_index, key in enumerate(common_keys):
         reference, _relative = reference_by_key[key]
         step_i, size_i, unit_i = index[key]
         current = np.asarray(candidate[step_i, size_i, unit_i], dtype=bool)
-        if reference.shape != current.shape:
-            raise InputContractError(
-                f"hotspot shape가 다릅니다: reference={reference.shape}, current={current.shape}",
-                field="shape",
-            )
         intersection = reference & current
         reference_only = reference & ~current
         candidate_only = current & ~reference
@@ -291,7 +323,10 @@ def compare_legacy_sim(reference_config: Path, run_dir: Path, output_dir: Path) 
     frame.to_parquet(output_dir / "comparison.parquet", index=False)
     frame.to_csv(output_dir / "comparison.csv", index=False)
     manifest = {
-        "schema_version": "1.0",
+        "schema_version": "2.0",
+        "product_id": run_manifest["product_id"],
+        "design_version": run_manifest.get("design_version"),
+        "matched_input_hashes": dict(sorted(config["input_hashes"].items())),
         "candidate_run_id": run_manifest["run_id"],
         "candidate_artifacts": run_manifest.get("artifacts", []),
         "reference_hashes": reference_hashes,
