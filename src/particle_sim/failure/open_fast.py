@@ -158,11 +158,15 @@ class LocalConnectivity:
         self._order.append(key)
         return tile
 
-    def splits(self, center: tuple[int, int], footprint: np.ndarray) -> bool:
-        """True when a particle centred at `center` disconnects the terminal regions.
+    def terminal_classes(
+        self, center: tuple[int, int], footprint: np.ndarray
+    ) -> list[set[_Class]] | None:
+        """Per-terminal union-find root class sets after placing a particle.
 
-        Matches `open_failure.causes_open_regions`: a terminal with no surviving electrode
-        pixel counts as open, and otherwise the regions must share a component.
+        Returns ``None`` when the particle does not remove any electrode pixel inside
+        the window (the early-return path that ``splits`` also uses).  Otherwise returns
+        a list with one ``set`` per terminal.  An empty set means the terminal lost every
+        electrode pixel it had.
         """
         y, x = center
         half_y, half_x = footprint.shape[0] // 2, footprint.shape[1] // 2
@@ -187,7 +191,7 @@ class LocalConnectivity:
 
         damaged = tile.inside_component & ~blocked
         if np.array_equal(damaged, tile.inside_component):
-            return False  # nothing was removed inside the window
+            return None  # nothing was removed inside the window
         inside_labels, _ = label(damaged)
 
         union = _UnionFind()
@@ -201,15 +205,29 @@ class LocalConnectivity:
             for index in np.nonzero((inside > 0) & (outside > 0))[0]:
                 union.union(("in", int(inside[index])), ("out", int(outside[index])))
 
-        shared: set[_Class] | None = None
+        result: list[set[_Class]] = []
         for (ys, xs), outer in zip(tile.terminal_local, tile.terminal_outside, strict=True):
             classes = {union.find(("out", value)) for value in outer}
             if ys.size:
                 alive = inside_labels[ys, xs]
                 classes.update(union.find(("in", int(v))) for v in np.unique(alive) if v)
-            if not classes:
+            result.append(classes)
+        return result
+
+    def splits(self, center: tuple[int, int], footprint: np.ndarray) -> bool:
+        """True when a particle centred at `center` disconnects the terminal regions.
+
+        Matches `open_failure.causes_open_regions`: a terminal with no surviving electrode
+        pixel counts as open, and otherwise the regions must share a component.
+        """
+        classes = self.terminal_classes(center, footprint)
+        if classes is None:
+            return False  # nothing was removed inside the window
+        shared: set[_Class] | None = None
+        for terminal_set in classes:
+            if not terminal_set:
                 return True  # this terminal lost every electrode pixel it had
-            shared = classes if shared is None else (shared & classes)
+            shared = terminal_set if shared is None else (shared & terminal_set)
             if not shared:
                 return True
         return False

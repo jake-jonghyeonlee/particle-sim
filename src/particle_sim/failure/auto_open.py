@@ -15,6 +15,7 @@ import numpy as np
 from scipy.ndimage import label
 
 from particle_sim.failure.open_failure import _mask_bounds, open_candidates, particle_footprint
+from particle_sim.failure.open_fast import LocalConnectivity
 from particle_sim.io.masks import MaskSet
 
 AUTO_CONFIRMED = "open_auto_terminals"
@@ -88,6 +89,57 @@ def _union_groups(label_sets: list[set[int]]) -> list[list[int]]:
     return list(groups.values())
 
 
+def _reference_auto_open_judgement(
+    crop: np.ndarray,
+    local: list[tuple[str, np.ndarray, np.ndarray]],
+    groups: list[list[int]],
+    stamp: np.ndarray,
+    candidate_ys: np.ndarray,
+    candidate_xs: np.ndarray,
+    y0: int,
+    y1: int,
+    x0: int,
+    x1: int,
+    height: int,
+    width: int,
+) -> np.ndarray:
+    """Reference per-candidate brute-force labelling (original algorithm).
+
+    Returns a bool array shaped ``(height, width)`` marking open centres.
+    """
+    half_y, half_x = stamp.shape[0] // 2, stamp.shape[1] // 2
+    failure = np.zeros((height, width), dtype=bool)
+    blocked = np.zeros(crop.shape, dtype=bool)
+    for y, x in zip(candidate_ys.tolist(), candidate_xs.tolist(), strict=True):
+        stamp_top, stamp_left = y - half_y, x - half_x
+        top, bottom = max(0, y0, stamp_top), min(height, y1, y + half_y + 1)
+        left, right = max(0, x0, stamp_left), min(width, x1, x + half_x + 1)
+        if top >= bottom or left >= right:
+            continue
+        window = stamp[top - stamp_top : bottom - stamp_top, left - stamp_left : right - stamp_left]
+        blocked[top - y0 : bottom - y0, left - x0 : right - x0] = window
+        damaged = crop & ~blocked
+        labels, _ = label(damaged)
+        is_open = False
+        for members in groups:
+            alive: list[set[int]] = []
+            for index in members:
+                kind, tys, txs = local[index]
+                values = set(labels[tys, txs].tolist()) - {0}
+                if values:
+                    alive.append(values)
+                elif kind == "roi_boundary":
+                    is_open = True  # the wire is cut where it leaves the ROI
+                    break
+                # a fully covered contact is counted as CNO, not as open
+            if is_open or (len(alive) >= 2 and len(_union_groups(alive)) > 1):
+                is_open = True
+                break
+        failure[y, x] = is_open
+        blocked[top - y0 : bottom - y0, left - x0 : right - x0] = False
+    return failure
+
+
 def simulate_auto_open(
     masks: MaskSet, electrode_id: str, diameter_um: float, contact_margin_um: float
 ) -> AutoOpenResult:
@@ -115,33 +167,63 @@ def simulate_auto_open(
     stamp = particle_footprint(grid, radius_um, contact_margin_um)
     half_y, half_x = stamp.shape[0] // 2, stamp.shape[1] // 2
     height, width = electrode.shape
-    blocked = np.zeros(crop.shape, dtype=bool)
+
+    # Build terminal region masks in the cropped coordinate system for LocalConnectivity
+    terminal_regions: list[np.ndarray] = []
+    for _kind, tys, txs in local:
+        region = np.zeros(crop.shape, dtype=bool)
+        region[tys, txs] = True
+        terminal_regions.append(region)
+
+    lc = LocalConnectivity(crop, terminal_regions, half_y, half_x)
+
     ys, xs = np.nonzero(candidates)
-    for y, x in zip(ys.tolist(), xs.tolist(), strict=True):
-        stamp_top, stamp_left = y - half_y, x - half_x
-        top, bottom = max(0, y0, stamp_top), min(height, y1, y + half_y + 1)
-        left, right = max(0, x0, stamp_left), min(width, x1, x + half_x + 1)
-        if top >= bottom or left >= right:
-            continue
-        window = stamp[top - stamp_top : bottom - stamp_top, left - stamp_left : right - stamp_left]
-        blocked[top - y0 : bottom - y0, left - x0 : right - x0] = window
-        damaged = crop & ~blocked
-        labels, _ = label(damaged)
+    centres = [
+        (int(y) - y0, int(x) - x0)
+        for y, x in zip(ys.tolist(), xs.tolist(), strict=True)
+    ]
+    # Walk tile by tile as simulate_open does
+    order = sorted(range(len(centres)), key=lambda i: lc.tile_key(*centres[i]))
+    for i in order:
+        cy, cx = centres[i]
+        tc = lc.terminal_classes((cy, cx), stamp)
+        if tc is None:
+            continue  # nothing was removed → not open
+
         is_open = False
         for members in groups:
-            alive: list[set[int]] = []
+            # Rule 3 & 4: evaluate each group of terminals that shared a component
+            # at baseline.
+            alive: list[set] = []
             for index in members:
-                kind, tys, txs = local[index]
-                values = set(labels[tys, txs].tolist()) - {0}
-                if values:
-                    alive.append(values)
+                kind = local[index][0]
+                classes = tc[index]
+                if classes:
+                    alive.append(classes)
                 elif kind == "roi_boundary":
-                    is_open = True  # the wire is cut where it leaves the ROI
+                    is_open = True  # Rule 3: boundary terminal fully covered → open
                     break
-                # a fully covered contact is counted as CNO, not as open
-            if is_open or (len(alive) >= 2 and len(_union_groups(alive)) > 1):
-                is_open = True
+                # Rule 3: contact terminal fully covered → skip (CNO, not open)
+            if is_open:
                 break
-        failure[y, x] = is_open
-        blocked[top - y0 : bottom - y0, left - x0 : right - x0] = False
+            if len(alive) >= 2:
+                # Rule 4: union-find grouping on shared roots.
+                # _union_groups expects list[set[int]], but terminal_classes returns
+                # set[_Class] where _Class = tuple[str, int].  Map them to ints.
+                root_to_int: dict[object, int] = {}
+                counter = 0
+                mapped: list[set[int]] = []
+                for class_set in alive:
+                    int_set: set[int] = set()
+                    for root in class_set:
+                        if root not in root_to_int:
+                            root_to_int[root] = counter
+                            counter += 1
+                        int_set.add(root_to_int[root])
+                    mapped.append(int_set)
+                if len(_union_groups(mapped)) > 1:
+                    is_open = True
+                    break
+        failure[int(ys[i]), int(xs[i])] = is_open
     return AutoOpenResult(electrode_id, failure, AUTO_CONFIRMED, names, int(candidates.sum()))
+
