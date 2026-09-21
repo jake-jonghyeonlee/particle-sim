@@ -1,0 +1,85 @@
+{
+  "purpose": "open 판정 두 구현의 동일 입력 비교. 현재 브랜치(전극 bounding box)와 ops/offline-packaging f0e5cca(open_fast.py, window-local connectivity).",
+  "measured_at": "2026-09-21",
+  "machine": "Mac mini M4 Pro, 12코어, 48GB",
+  "method": [
+    "f0e5cca를 detached worktree로 체크아웃하고 같은 .venv로 실행했다.",
+    "f0e5cca의 OpenPath는 extra=forbid이고 단자 mask 필드가 없어 기존 파일럿 fixture를 읽지 못한다. 그래서 점 단자만 쓰는 v1 합성 케이스(ROI를 가로지르는 사행 배선 1개)를 새로 만들어 양쪽에 같은 파일을 줬다.",
+    "particle_sim.__file__을 출력해 어느 트리가 로드됐는지 확인했다.",
+    "simulate_open(manifest, masks, open_path, diameter) 시그니처가 양쪽 동일하므로 같은 호출로 쟀다."
+  ],
+  "case_200": {
+    "canvas_px": 200,
+    "electrode_px": 4782,
+    "pixel_size_um": 0.5,
+    "sizes_um": [
+      2.0,
+      4.0,
+      6.0,
+      8.0,
+      10.0
+    ],
+    "repeats": 5
+  },
+  "case_1000": {
+    "canvas_px": 1000,
+    "electrode_px": 80050,
+    "pixel_size_um": 0.1,
+    "sizes_um": [
+      2.0,
+      4.0,
+      6.0,
+      8.0,
+      10.0
+    ],
+    "repeats": 1
+  },
+  "result_200": {
+    "head_per_size_median_s": {
+      "2.0": 0.9845828341785818,
+      "4.0": 1.5437907499726862,
+      "6.0": 2.090081667061895,
+      "8.0": 2.6410164579283446,
+      "10.0": 3.2087098339106888
+    },
+    "ops_per_size_median_s": {
+      "2.0": 0.46650779200717807,
+      "4.0": 0.43577966606244445,
+      "6.0": 0.579795541940257,
+      "8.0": 0.7662836669478565,
+      "10.0": 0.9357060410548002
+    },
+    "head_total_median_s": 10.466029957868159,
+    "ops_total_median_s": 3.1816518751438707,
+    "speedup_total": 3.29,
+    "open_px_per_size": {
+      "2.0": 4218,
+      "4.0": 9845,
+      "6.0": 15487,
+      "8.0": 21110,
+      "10.0": 26782
+    },
+    "pixel_equality": "identical"
+  },
+  "result_1000": {
+    "head_d2_s": [
+      395.8,
+      400.3
+    ],
+    "ops_d2_s": 24.913218208123,
+    "speedup_d2": 16.1,
+    "ops_all_sizes_total_s": 209.7696417500265,
+    "ops_per_size_s": {
+      "2.0": 24.913218208123,
+      "4.0": 15.843623167136684,
+      "6.0": 29.24667241703719,
+      "8.0": 55.018084459006786,
+      "10.0": 84.74779087491333
+    },
+    "open_px_d2": 85267,
+    "pixel_equality_d2": "identical",
+    "note": "HEAD의 나머지 4개 크기는 200² 추세로 보아 합계가 1시간에 가까울 것으로 보여 측정하지 않았다."
+  },
+  "conclusion": "f0e5cca는 현재 구현과 결과가 픽셀 단위로 같고 200²에서 3.29배, 1000²의 d=2에서 16.1배 빠르다. 중복 구현이 아니라 현재 구현이 처리하지 못하는 규모를 처리한다.",
+  "harness": "scratchpad 전용. 저장소 이식은 CODE-CHANGE-BACKLOG.md 15절의 0단계 항목이다."
+}
