@@ -34,6 +34,18 @@
   생각해야 할 부분(23~25쪽)을 추가했고, 넘침·글자 손실 검사를 통과했다(`evidence/pdf-validation.json`).
   `REPORT-SCRIPT.md` 발표 원고는 새 장 구성을 아직 반영하지 않았다.
 
+## 2026-09-21 발표 원고 갱신
+
+- `REPORT-SCRIPT.md`를 25쪽 판 기준으로 다시 썼다. 쪽마다 핵심 메시지·발표 스크립트·사실과 한계·첨삭
+  요청을 두고, 판정이 갈릴 수 있는 9개 쪽에는 예상 질문을 덧붙였다. 17쪽 판과의 대응표와 발표 시간
+  배분도 넣었다.
+- 원고의 모든 수치는 `report.html` 본문과 대조해 일치를 확인했다. 인용한 코드 식별자
+  (`CNO_COVERAGE_RULE`, `cno_coverage_rule`, `risk_by_contact.parquet`, `insufficient_terminals`,
+  `baseline_open`, `terminal_lost`, `contact_lost`, `new_unit`)도 현재 소스에 존재한다.
+- 이전 17쪽 판 원고는 `git show 9013b9d:docs/report/REPORT-SCRIPT.md`에 있다.
+- 첨삭은 원고가 아니라 `build_report.py`에 반영한 뒤 HTML/PDF를 한 번 다시 만든다. 이번 갱신에서는
+  보고서 본문·그림·PDF를 바꾸지 않았다.
+
 ## 이번에 확인·수정한 사항
 
 - 기존 PDF는 17쪽이며, 9·10·11·16·17쪽에 앞 절의 내용이 넘어왔다. A4 인쇄 폭에서 본문이 고정 높이를 초과하고 절대 위치 footer와 충돌했다. 표의 분할 방지 규칙까지 작용해 다음 절과 섞였다.
