@@ -8,6 +8,7 @@ import numpy as np
 from scipy.ndimage import binary_dilation, label
 
 from particle_sim.errors import InputContractError
+from particle_sim.failure.open_fast import LocalConnectivity
 from particle_sim.io.masks import GridSpec, MaskSet
 from particle_sim.schema import OpenPath, ProductManifest
 
@@ -308,35 +309,33 @@ def simulate_open(
     stamp = particle_footprint(grid, radius_um, margin)
     half_y, half_x = stamp.shape[0] // 2, stamp.shape[1] // 2
     height, width = electrode_mask.shape
+    # Crop to the electrode, widened by the disc so every candidate centre still falls inside.
+    # Candidates are the electrode dilated by the reach, so this bound holds by construction.
     crop_y0, crop_y1, crop_x0, crop_x1 = _mask_bounds(electrode_mask)
+    crop_y0 = max(crop_y0 - half_y, 0)
+    crop_y1 = min(crop_y1 + half_y, height)
+    crop_x0 = max(crop_x0 - half_x, 0)
+    crop_x1 = min(crop_x1 + half_x, width)
     cropped_electrode = electrode_mask[crop_y0:crop_y1, crop_x0:crop_x1]
     cropped_terminal_a = terminal_a_region[crop_y0:crop_y1, crop_x0:crop_x1]
     cropped_terminal_b = terminal_b_region[crop_y0:crop_y1, crop_x0:crop_x1]
-    blocked = np.zeros(cropped_electrode.shape, dtype=bool)
+    local = LocalConnectivity(
+        cropped_electrode,
+        [cropped_terminal_a, cropped_terminal_b],
+        half_y,
+        half_x,
+    )
     ys, xs = np.nonzero(candidates)
-    for y, x in zip(ys.tolist(), xs.tolist(), strict=True):
-        stamp_top, stamp_bottom = y - half_y, y + half_y + 1
-        stamp_left, stamp_right = x - half_x, x + half_x + 1
-        top = max(0, crop_y0, stamp_top)
-        bottom = min(height, crop_y1, stamp_bottom)
-        left = max(0, crop_x0, stamp_left)
-        right = min(width, crop_x1, stamp_right)
-        if top >= bottom or left >= right:
-            continue
-        window = stamp[
-            top - stamp_top : bottom - stamp_top,
-            left - stamp_left : right - stamp_left,
-        ]
-        blocked_top, blocked_bottom = top - crop_y0, bottom - crop_y0
-        blocked_left, blocked_right = left - crop_x0, right - crop_x0
-        blocked[blocked_top:blocked_bottom, blocked_left:blocked_right] = window
-        failure[y, x] = causes_open_regions(
-            cropped_electrode,
-            blocked,
-            cropped_terminal_a,
-            cropped_terminal_b,
-        )
-        blocked[blocked_top:blocked_bottom, blocked_left:blocked_right] = False
+    centres = [
+        (int(y) - crop_y0, int(x) - crop_x0)
+        for y, x in zip(ys.tolist(), xs.tolist(), strict=True)
+    ]
+    # Walking tile by tile keeps each tile's outside labelling built once instead of on every
+    # row sweep, which otherwise evicts and rebuilds it across a wide electrode.
+    order = sorted(range(len(centres)), key=lambda i: local.tile_key(*centres[i]))
+    for i in order:
+        cy, cx = centres[i]
+        failure[int(ys[i]), int(xs[i])] = local.splits((cy, cx), stamp)
     return OpenResult(
         path_id=open_path.path_id,
         electrode=open_path.electrode,
