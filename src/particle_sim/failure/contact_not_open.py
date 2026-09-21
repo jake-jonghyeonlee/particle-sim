@@ -19,6 +19,8 @@ from particle_sim.io.masks import GridSpec
 CNO_MODE = "contact_not_open"
 CNO_CONFIRMED = "cno_full_cover"
 CONTACT_LOST = "contact_lost"
+# full_cover: hole의 접촉 픽셀을 전부 덮어야 CNO. 잠정이며 물리 근거가 필요하다.
+# any_hole: 같은 두 전극을 잇는 hole 중 하나라도 막히면 CNO. 2026-09-21 확정.
 CNO_COVERAGE_RULE = "full_cover_any_hole"
 
 
