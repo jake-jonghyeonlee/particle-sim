@@ -723,8 +723,33 @@ bbox가 작았기 때문이다. 보고서도 그 값이 긴 배선의 대표값�
 남은 것은 5단계(크기 단조성)뿐이며 계획대로 보류다. contact 완전 가림이 open을 CNO로 옮기므로
 단조성 전제가 깨질 수 있어 반례 탐색이 선행한다.
 
-미수행: 실제 파일럿(복합 200², contact 파일럿) 재실행으로 기존 evidence와 hotspot·CA가 같은지
-확인하는 완료 기준이 남아 있다. TAT 재측정과 보고서 17쪽 갱신도 아직이다.
+A1 동등성 확인(2026-09-22): 복합 200²와 contact 파일럿 두 곳에서 hotspots.zarr 배열 5종
+(legacy_failure, nominal_failure, pair_margin_um, union_failure, union_pair_count)과 ca.parquet,
+ca_union.parquet를 대조했다. 불일치 0건. pair_margin_um의 대량 불일치는 NaN != NaN 때문이었고
+NaN 패턴 동일·비NaN 값 정확 일치로 확인됐다. ca.parquet 차이는 새 스키마의 contact_id 열 추가뿐이고
+공통 열은 전부 일치했다. 비교 스크립트: `docs/report/work/bundle-a/compare_equivalence.py`.
+
+A2 TAT 재측정(2026-09-22, Mac mini M4 Pro, repeats=3):
+
+| 형상 | 항목 | 이식 전(repeats=5) | 이식 후(repeats=3) | 배수 |
+|---|---|---:|---:|---:|
+| 복합 200² | open | 7.545 s | 3.072 s | 2.46배 |
+| 복합 200² | 통합 | 8.810 s | 4.342 s | 2.03배 |
+| padded 1000² | open | 4.669 s | 4.687 s | 1.00배 |
+| padded 1000² | 통합 | 16.385 s | 16.356 s | 1.00배 |
+
+주의: '이식 전' 기준선은 `evidence/benchmark-failure-modes-200-after-open-cache.json`으로
+전극 bounding box 최적화 적용 전 값이다. 보고서 17쪽의 3.14 s / 4.42 s는 bbox 최적화 후 값이므로
+bbox 후(3.14 s)와 window-local 후(3.072 s)를 비교하면 차이는 약 2%로 유의하지 않다. padded 1000²도
+4.669→4.687 s로 측정 CV 이내다. 두 형상 모두 전극 bbox가 이미 작아 창 판정이 더 줄일 것이 없다.
+근거: `docs/report/work/bundle-a/failure-modes-200-rerun.json`,
+`docs/report/work/bundle-a/failure-modes-padded-1000-after-window-local.json`.
+
+A3 보고서 17쪽 갱신(2026-09-22): 발표 스크립트의 padded 1000² 문단에서 "bounding box 안에서만
+연결성을 보기 때문"을 "이물 주변의 국소 창(window) 안에서만 연결성을 판정하기 때문"으로 교체했다.
+사실과 한계에 window-local 이식 뒤 재측정 결과를 추가했다.
+
+미수행: 5단계(크기 단조성)만 보류 중이다(계획대로).
 
 ## 한 번에 수정할 때의 검증 묶음
 

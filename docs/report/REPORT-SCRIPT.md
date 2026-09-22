@@ -1091,7 +1091,7 @@ bounding box 밖에는 그 전극 픽셀이 없으므로 결과가 바뀌지 않
 
 마지막 문단이 확장성 시험입니다. 같은 200² 형상을 1000² 캔버스 중앙에 그대로 두고 측정했습니다. lateral
 5.68초, vertical 8.52초, open 4.67초, 통합 16.39초이고 최대 메모리 843.6 MB, 출력 621.4 MB입니다.
-open이 1.49배밖에 늘지 않은 것은 bounding box 안에서만 연결성을 보기 때문입니다. 반면 short 지도는 전체
+open이 1.49배밖에 늘지 않은 것은 이물 주변의 국소 창(window) 안에서만 연결성을 판정하기 때문입니다. 반면 short 지도는 전체
 ROI에 저장되므로 출력이 커졌고, 그 대부분이 pair_margin_um입니다. 이 시험은 큰 빈 ROI의 비용을 보는 값이지
 실제 긴 배선의 대표값이 아닙니다.”
 
@@ -1111,6 +1111,14 @@ ROI에 저장되므로 출력이 커졌고, 그 대부분이 pair_margin_um입�
 - open cache는 명목 실행에만 적용한다. 산포 조건 사이에서는 재사용하지 않는다.
 - 근거: `evidence/large-short.json`, `large-prob*.json`, `benchmark-failure-modes-200*.json`,
   `benchmark-failure-modes-padded-1000.json`, `open-optimization-equivalence.json`.
+- window-local 연결성 이식(커밋 `ab1a9d9`~`c07772a`) 뒤 재측정(repeats=3, Mac mini M4 Pro):
+  복합 200² open 3.07 s(이전 3.14 s), padded 1000² open 4.69 s(이전 4.67 s).
+  두 형상 모두 유의한 변화가 없다. 전극 bounding box가 이미 작아 창 판정이 더 줄일 것이 없기 때문이다.
+  이 이식의 이득은 ROI를 가로지르는 긴 배선에서 나타나며 1000² 기준 16.1배는
+  `evidence/benchmark-open-impl.json`에 별도 기록되어 있다. 이전 측정은 repeats=5이므로
+  직접 비교의 정밀도에 한계가 있다.
+  근거: `docs/report/work/bundle-a/failure-modes-200-rerun.json`,
+  `docs/report/work/bundle-a/failure-modes-padded-1000-after-window-local.json`.
 
 ### 저장된 두 실행의 정확한 조건
 

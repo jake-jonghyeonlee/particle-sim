@@ -48,6 +48,10 @@ VERIFIED_NUMBERS = {
     "0.25": "대형 실행의 픽셀 크기. evidence/large-case/manifest.yaml의 pixel_size_x_um",
     "250": "대형 실행의 ROI. evidence/large-case/manifest.yaml의 roi_width_um",
     "1.49": "padded 1000² open 4.67초 ÷ 200² open 3.14초. HANDOFF-2026-09-19.md 8절에 명시",
+    "3.07": "window-local 이식 후 복합 200² open 중앙값(repeats=3). docs/report/work/bundle-a/failure-modes-200-rerun.json",
+    "4.69": "window-local 이식 후 padded 1000² open 중앙값(repeats=3). docs/report/work/bundle-a/failure-modes-padded-1000-after-window-local.json",
+    "16.1": "1000² window-local 대 현재 구현 배수(d=2). evidence/benchmark-open-impl.json의 speedup_d2",
+    "07772": "커밋 해시 c07772a의 부분 문자열. 수치가 아님",
 }
 
 # 원고 자체를 설명하는 수·비율이라 보고서와 대조할 대상이 아니다.
