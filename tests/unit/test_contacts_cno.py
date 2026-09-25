@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
 from copy import deepcopy
 from pathlib import Path
@@ -12,6 +13,7 @@ import pytest
 import yaml
 from PIL import Image
 from pydantic import ValidationError
+from scipy.ndimage import correlate
 
 from particle_sim.aggregation.risk_allocation import allocate_risk
 from particle_sim.aggregation.risk_tables import build_risk_tables
@@ -23,7 +25,12 @@ from particle_sim.failure.auto_open import (
     INSUFFICIENT_TERMINALS,
     simulate_auto_open,
 )
-from particle_sim.failure.contact_not_open import CNO_MODE, CONTACT_LOST, simulate_cno
+from particle_sim.failure.contact_not_open import (
+    CNO_MODE,
+    CONTACT_LOST,
+    hole_blocked_centres,
+    simulate_cno,
+)
 from particle_sim.failure.open_failure import (
     BASELINE_OPEN,
     TERMINAL_LOST,
@@ -33,6 +40,7 @@ from particle_sim.failure.open_failure import (
 )
 from particle_sim.failure.union import ANY_MODE, union_by_mode
 from particle_sim.geometry.contact import DistanceCache
+from particle_sim.geometry.contacts import build_contact_topology
 from particle_sim.geometry.transforms import apply_scenario_to_masks, transform_mask
 from particle_sim.io.fab import load_fab_table
 from particle_sim.io.masks import GridSpec, MaskSet, load_product_masks
@@ -307,7 +315,7 @@ def test_auto_open_matches_explicit_terminals_except_blocked_contacts(tmp_path: 
         cno = np.zeros(SHAPE, dtype=bool)
         for link in topology.links.values():
             cno |= simulate_cno(link, link.unit_id, masks.grid, diameter, 0.0).failure
-        # only positions where a contact is fully blocked move from open to CNO
+        # Auto-open uses the original effective-terminal policy; CNO is a separate map.
         assert not (auto.failure & ~reference.failure).any()
         assert not ((reference.failure & ~auto.failure) & ~cno).any()
         if diameter >= 4.0:
@@ -346,7 +354,56 @@ def test_electrode_with_one_terminal_is_reported_not_evaluated(tmp_path: Path) -
 # ---------------------------------------------------------------- CNO
 
 
-def test_cno_requires_full_cover_and_matches_brute_force(tmp_path: Path) -> None:
+def test_sparse_cno_matches_correlate_randomized_and_clipped_edges() -> None:
+    rng = np.random.default_rng(20260925)
+    cases = [
+        ((0, 0), (3, 5), (8, 9)),
+        ((7, 8), (4, 2), (8, 9)),
+        ((0, 8), (2, 4), (8, 9)),
+    ]
+    for _ in range(100):
+        height, width = (int(value) for value in rng.integers(1, 9, size=2))
+        stamp_shape = (height, width)
+        shape = (int(rng.integers(1, 12)), int(rng.integers(1, 13)))
+        n_hole = int(rng.integers(1, min(10, shape[0] * shape[1]) + 1))
+        points = rng.choice(shape[0] * shape[1], size=n_hole, replace=False)
+        ys, xs = np.divmod(points, shape[1])
+        stamp = rng.integers(0, 2, size=stamp_shape, dtype=np.int8).astype(bool)
+        if not stamp.any():
+            stamp[height // 2, width // 2] = True
+        rows, cols, actual = hole_blocked_centres(ys, xs, shape, stamp)
+        top, bottom = rows.start, rows.stop
+        left, right = cols.start, cols.stop
+        hole = np.zeros((bottom - top, right - left), dtype=np.int32)
+        hole[ys - top, xs - left] = 1
+        expected = 2 * correlate(hole, stamp.astype(np.int32), mode="constant", cval=0) >= len(ys)
+        np.testing.assert_array_equal(actual, expected)
+
+    # Explicit odd/even stamp and ROI corner placements exercise the clipped
+    # translated runs on every side of the candidate-centre window.
+    for (y, x), stamp_shape, shape in cases[:3]:
+        ys = np.array([y], dtype=int)
+        xs = np.array([x], dtype=int)
+        stamp = rng.integers(0, 2, size=stamp_shape, dtype=np.int8).astype(bool)
+        rows, cols, actual = hole_blocked_centres(ys, xs, shape, stamp)
+        top, bottom = rows.start, rows.stop
+        left, right = cols.start, cols.stop
+        hole = np.zeros((bottom - top, right - left), dtype=np.int32)
+        hole[ys - top, xs - left] = 1
+        expected = 2 * correlate(hole, stamp.astype(np.int32), mode="constant", cval=0) >= len(ys)
+        np.testing.assert_array_equal(actual, expected)
+
+
+def test_diagonal_cut_pixels_remain_separate_four_connected_holes(tmp_path: Path) -> None:
+    holes = np.zeros(SHAPE, dtype=bool)
+    holes[28, 11] = True
+    holes[29, 12] = True
+    _manifest, masks = _load(_contact_case(tmp_path, holes=holes))
+    link = masks.contact_topology.links["cno:CNT:PA__W"]
+    assert sorted(hole.cut_pixels for hole in link.holes) == [1, 1]
+
+
+def test_cno_half_cut_hole_matches_brute_force(tmp_path: Path) -> None:
     manifest, masks = _load(_contact_case(tmp_path))
     link = masks.contact_topology.links["cno:CNT:PA__W"]
     hole = link.holes[0]
@@ -359,14 +416,110 @@ def test_cno_requires_full_cover_and_matches_brute_force(tmp_path: Path) -> None
         half = stamp.shape[0] // 2
         for y in range(SHAPE[0]):
             for x in range(SHAPE[1]):
-                dy = (hole.ys - y) + half
-                dx = (hole.xs - x) + half
+                dy = (hole.cut_ys - y) + half
+                dx = (hole.cut_xs - x) + half
                 inside = (dy >= 0) & (dy < stamp.shape[0]) & (dx >= 0) & (dx < stamp.shape[1])
-                brute[y, x] = bool(inside.all() and stamp[dy, dx].all())
+                brute[y, x] = 2 * int(np.count_nonzero(stamp[dy[inside], dx[inside]])) >= hole.cut_pixels
         np.testing.assert_array_equal(result.failure, brute)
-    # a 2x2 um hole cannot be fully covered by a 1 um particle
+    # A 2x2 um hole cannot be half-covered by a 1 um particle.
     assert not simulate_cno(link, link.unit_id, grid, 1.0, 0.0).failure.any()
     assert simulate_cno(link, link.unit_id, grid, 4.0, 0.0).failure.any()
+
+
+@pytest.mark.parametrize("covered,expected", [(49, False), (50, True), (51, True)])
+def test_even_cut_hole_half_threshold(covered: int, expected: bool) -> None:
+    ys, xs = np.nonzero(np.ones((10, 10), dtype=bool))
+    ys, xs = ys + 2, xs + 2
+    stamp = np.zeros((10, 10), dtype=bool)
+    stamp.flat[:covered] = True
+    rows, cols, blocked = hole_blocked_centres(ys, xs, (14, 14), stamp)
+    assert bool(blocked[7 - rows.start, 7 - cols.start]) is expected
+
+
+@pytest.mark.parametrize("covered,expected", [(112, False), (113, True)])
+def test_odd_225_pixel_cut_hole_threshold(covered: int, expected: bool) -> None:
+    ys, xs = np.nonzero(np.ones((15, 15), dtype=bool))
+    ys, xs = ys + 2, xs + 2
+    stamp = np.zeros((15, 15), dtype=bool)
+    stamp.flat[:covered] = True
+    rows, cols, blocked = hole_blocked_centres(ys, xs, (19, 19), stamp)
+    assert bool(blocked[9 - rows.start, 9 - cols.start]) is expected
+
+
+def test_auto_open_bytes_match_aae492a_baseline(tmp_path: Path) -> None:
+    _manifest, masks = _load(_contact_case(tmp_path))
+    payload = b"".join(
+        simulate_auto_open(masks, "W", diameter, 0.5).failure.tobytes()
+        for diameter in (2.0, 4.0, 6.0)
+    )
+    assert hashlib.sha256(payload).hexdigest() == (
+        "1ef5579d0ea6dd445511be26e47951de70edbd4eb64f7afb9f8b5e39c382c335"
+    )
+
+
+def test_cno_uses_whole_cut_component_not_effective_endpoint(tmp_path: Path) -> None:
+    wire = _rect(28, 30, 11, 13)
+    hole_mask = _rect(28, 32, 11, 15)
+    _manifest, masks = _load(_contact_case(tmp_path, wire=wire, holes=hole_mask))
+    link = masks.contact_topology.links["cno:CNT:PA__W"]
+    hole = link.holes[0]
+    assert (hole.raw_pixels, hole.cut_pixels, hole.effective_pixels) == (None, 16, 4)
+    stamp = particle_footprint(masks.grid, 0.5, 0.0)
+    rows, cols, effective_blocked = hole_blocked_centres(hole.ys, hole.xs, SHAPE, stamp)
+    assert effective_blocked[29 - rows.start, 12 - cols.start]
+    assert not simulate_cno(link, link.unit_id, masks.grid, 1.0, 0.0).failure[29, 12]
+
+
+def test_two_hole_link_ors_per_hole_results(tmp_path: Path) -> None:
+    holes = _rect(28, 30, 10, 12) | _rect(28, 30, 15, 17)
+    _manifest, masks = _load(_contact_case(tmp_path, holes=holes))
+    link = masks.contact_topology.links["cno:CNT:PA__W"]
+    assert len(link.holes) == 2
+    stamp = particle_footprint(masks.grid, 0.5, 0.0)
+    expected = np.zeros(SHAPE, dtype=bool)
+    for hole in link.holes:
+        rows, cols, blocked = hole_blocked_centres(hole.cut_ys, hole.cut_xs, SHAPE, stamp)
+        expected[rows, cols] |= blocked
+    result = simulate_cno(link, link.unit_id, masks.grid, 1.0, 0.0)
+    np.testing.assert_array_equal(result.failure, expected)
+    assert result.failure[29, 11] and result.failure[29, 16]
+
+
+def test_raw_cut_counts_partial_cut_and_roi_edge(tmp_path: Path) -> None:
+    holes = _rect(28, 32, 11, 15)
+    manifest, masks = _load(_contact_case(tmp_path, holes=holes))
+    raw = holes | _rect(27, 28, 11, 15)
+    topology = build_contact_topology(
+        manifest, {"CNT": holes}, masks.electrodes, strict=True,
+        raw_contact_masks={"CNT": raw},
+    )
+    hole = topology.holes[0]
+    assert (hole.raw_pixels, hole.cut_pixels, hole.effective_pixels) == (20, 16, 16)
+    edge_ys = np.array([0, 0, 1, 1])
+    edge_xs = np.array([0, 1, 0, 1])
+    rows, cols, blocked = hole_blocked_centres(edge_ys, edge_xs, (3, 3), np.ones((3, 3), dtype=bool))
+    assert blocked[0 - rows.start, 0 - cols.start]
+    with pytest.raises(ValueError, match="nonempty"):
+        hole_blocked_centres(np.array([], dtype=int), np.array([], dtype=int), (3, 3), np.ones((1, 1)))
+    with pytest.raises(InputContractError, match="mask가 비어"):
+        build_contact_topology(manifest, {"CNT": np.zeros(SHAPE, dtype=bool)}, masks.electrodes, strict=True)
+    with pytest.raises(InputContractError, match="ROI edge"):
+        _load(_contact_case(tmp_path / "edge", holes=_rect(0, 2, 0, 2)))
+
+
+def test_cno_margin_is_zero_even_when_manifest_margin_is_half_um(tmp_path: Path) -> None:
+    manifest, masks = _load(_contact_case(tmp_path, extra={"contact_margin_um": 0.5}))
+    link = masks.contact_topology.links["cno:CNT:PA__W"]
+    zero = simulate_cno(link, link.unit_id, masks.grid, 1.0, 0.0)
+    nominal = simulate_cno(link, link.unit_id, masks.grid, 1.0, manifest.contact_margin_um)
+    np.testing.assert_array_equal(nominal.failure, zero.failure)
+    evaluated = {r.pair_id: r for r in evaluate_units(
+        manifest, masks, build_stack_z(manifest), "S_M1", 1.0, DistanceCache(masks)
+    )}
+    np.testing.assert_array_equal(evaluated[link.unit_id].failure, zero.failure)
+    stamp_with_margin = particle_footprint(masks.grid, 0.5, 0.5)
+    rows, cols, inflated = hole_blocked_centres(link.holes[0].cut_ys, link.holes[0].cut_xs, SHAPE, stamp_with_margin)
+    assert np.any(inflated & ~zero.failure[rows, cols])
 
 
 def test_cno_link_missing_in_scenario_is_contact_lost(tmp_path: Path) -> None:
@@ -421,7 +574,7 @@ def test_nominal_run_writes_cno_and_auto_open_units(tmp_path: Path) -> None:
             float(any_row["ca_union_nominal_um2"].iloc[0])
         )
     run_manifest = json.loads(run.run_manifest.read_text(encoding="utf-8"))
-    assert run_manifest["cno_coverage_rule"] == "full_cover_any_hole"
+    assert run_manifest["cno_coverage_rule"] == "at_least_half_cut_hole_any_hole"
     assert any("CNO" in warning for warning in run_manifest["warnings"])
 
     fab = tmp_path / "fab.csv"

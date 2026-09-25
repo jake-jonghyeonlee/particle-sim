@@ -1,8 +1,7 @@
 """CNO (Contact Not Open): a particle blocks a contact·via hole between two electrodes.
 
-Provisional criterion (TODO_PHYSICS, see docs/CODE-CHANGE-BACKLOG.md 11): a hole fails only
-when the particle covers every effective contact pixel, and a link fails when any one of its
-holes fails. Partial coverage and redundant parallel holes are open questions.
+Synthetic criterion: a hole fails when a margin-free particle disc covers at least half
+of its entire TR-cut component. A link fails when any one of its holes fails.
 """
 
 from __future__ import annotations
@@ -10,18 +9,15 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 import numpy as np
-from scipy.ndimage import correlate
 
 from particle_sim.failure.open_failure import particle_footprint
 from particle_sim.geometry.contacts import ContactLink
 from particle_sim.io.masks import GridSpec
 
 CNO_MODE = "contact_not_open"
-CNO_CONFIRMED = "cno_full_cover"
+CNO_CONFIRMED = "cno_at_least_half_cut_hole"
 CONTACT_LOST = "contact_lost"
-# full_cover: hole의 접촉 픽셀을 전부 덮어야 CNO. 잠정이며 물리 근거가 필요하다.
-# any_hole: 같은 두 전극을 잇는 hole 중 하나라도 막히면 CNO. 2026-09-21 확정.
-CNO_COVERAGE_RULE = "full_cover_any_hole"
+CNO_COVERAGE_RULE = "at_least_half_cut_hole_any_hole"
 
 
 @dataclass(frozen=True)
@@ -34,15 +30,44 @@ class CnoResult:
 def hole_blocked_centres(
     ys: np.ndarray, xs: np.ndarray, shape_yx: tuple[int, int], stamp: np.ndarray
 ) -> tuple[slice, slice, np.ndarray]:
-    """Centres whose particle disc covers every given hole pixel, in a local window."""
+    """Centres covering at least half the physical cut hole, in a local window."""
+    if len(ys) == 0 or len(ys) != len(xs):
+        raise ValueError("physical cut hole must contain matching, nonempty coordinates")
     half_y, half_x = stamp.shape[0] // 2, stamp.shape[1] // 2
     top, bottom = max(0, int(ys.min()) - half_y), min(shape_yx[0], int(ys.max()) + half_y + 1)
     left, right = max(0, int(xs.min()) - half_x), min(shape_yx[1], int(xs.max()) + half_x + 1)
-    hole = np.zeros((bottom - top, right - left), dtype=np.int32)
-    hole[ys - top, xs - left] = 1
-    # covered(c) = sum_p hole[p] * disc[p - c]; the disc is symmetric, so this is a correlation
-    covered = correlate(hole, stamp.astype(np.int32), mode="constant", cval=0)
-    return slice(top, bottom), slice(left, right), covered == int(hole.sum())
+    # Each nonempty stamp row is represented by one or more contiguous runs.
+    # Translating a run for a hole pixel adds one to a horizontal range of
+    # candidate centres. A difference image plus an exact integer prefix sum
+    # avoids materializing the hole-by-footprint correlation tensor.
+    width = right - left
+    diff = np.zeros((bottom - top, width + 1), dtype=np.int32)
+    stamp_y, stamp_x = np.nonzero(stamp)
+    half_x = stamp.shape[1] // 2
+    row_runs: dict[int, list[tuple[int, int]]] = {}
+    for sy in np.unique(stamp_y):
+        run_x = stamp_x[stamp_y == sy]
+        breaks = np.flatnonzero(np.diff(run_x) != 1) + 1
+        for run in np.split(run_x, breaks):
+            row_runs[int(sy)] = row_runs.get(int(sy), []) + [(int(run[0]), int(run[-1]))]
+
+    half_y = stamp.shape[0] // 2
+    for hy, hx in zip(ys, xs, strict=True):
+        for sy, runs in row_runs.items():
+            cy = int(hy) - (sy - half_y)
+            if cy < top or cy >= bottom:
+                continue
+            diff_row = diff[cy - top]
+            for sx0, sx1 in runs:
+                # Correlation placement: p - c = stamp_index - stamp_center.
+                x0 = max(left, int(hx) - (sx1 - half_x))
+                x1 = min(right, int(hx) - (sx0 - half_x) + 1)
+                if x0 < x1:
+                    diff_row[x0 - left] += 1
+                    diff_row[x1 - left] -= 1
+
+    covered = np.cumsum(diff[:, :width], axis=1, dtype=np.int32)
+    return slice(top, bottom), slice(left, right), 2 * covered >= len(ys)
 
 
 def simulate_cno(
@@ -55,8 +80,11 @@ def simulate_cno(
     failure = np.zeros(grid.shape_yx, dtype=bool)
     if link is None or not link.holes:
         return CnoResult(unit_id, failure, CONTACT_LOST)
-    stamp = particle_footprint(grid, diameter_um / 2.0, contact_margin_um)
+    # Keep the argument for callers; CNO deliberately ignores the contact/open margin.
+    stamp = particle_footprint(grid, diameter_um / 2.0, 0.0)
     for hole in link.holes:
-        rows, cols, blocked = hole_blocked_centres(hole.ys, hole.xs, grid.shape_yx, stamp)
+        rows, cols, blocked = hole_blocked_centres(
+            hole.cut_ys, hole.cut_xs, grid.shape_yx, stamp
+        )
         failure[rows, cols] |= blocked
     return CnoResult(unit_id, failure, CNO_CONFIRMED)

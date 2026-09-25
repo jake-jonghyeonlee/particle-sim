@@ -623,8 +623,9 @@ def todo_physics_warnings(m: ProductManifest) -> list[str]:
     ]
     if m.contacts:
         warnings.append(
-            "TODO_PHYSICS: CNO는 contact hole 전체가 가려질 때만 불량으로 보고, 같은 전극을 잇는 "
-            "hole 중 하나라도 막히면 불량으로 보는 잠정 기준입니다(일부 가림·병렬 hole 기준 미확정)"
+            "TODO_PHYSICS: CNO는 margin 없는 입자 disc가 TR-cut contact hole 전체 픽셀의 "
+            "50% 이상을 가리면 불량으로 보고, 같은 전극을 잇는 hole 중 하나라도 해당하면 "
+            "불량으로 보는 합성 기준입니다(병렬 hole의 물리적 기준 미확정)"
         )
     if any(m.open_applicable_steps_by_layer.values()):
         warnings.append(

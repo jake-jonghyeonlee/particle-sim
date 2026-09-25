@@ -137,6 +137,28 @@ def _simulate_probability(args: argparse.Namespace) -> int:
     return 0
 
 
+def _analyze_central(args: argparse.Namespace) -> int:
+    from particle_sim.validation.central_window import analyze_central
+
+    result = analyze_central(
+        Path(args.product_config), Path(args.output),
+        run_dir=Path(args.run) if args.run else None,
+    )
+    _print_json({"status": "ok", "output": args.output, **result})
+    return 0
+
+
+def _analyze_cno_open(args: argparse.Namespace) -> int:
+    from particle_sim.validation.cno_open_dedup import analyze_cno_open
+
+    result = analyze_cno_open(
+        Path(args.product_config), Path(args.adapter_sidecar),
+        Path(args.run), Path(args.output),
+    )
+    _print_json({"status": "ok", "output": args.output, **result})
+    return 0
+
+
 def _apply_fab(args: argparse.Namespace) -> int:
     import pandas as pd
 
@@ -407,6 +429,23 @@ def build_parser() -> argparse.ArgumentParser:
         help="수렴 판정 허용 오차(예: 0.01). 지정하면 만족하지 못한 계열을 경고로 남긴다",
     )
     probability.set_defaults(func=_simulate_probability)
+
+    central = subparsers.add_parser(
+        "analyze-central", help="1200 ROI의 중앙 600x600 통계와 지름별 support 검사"
+    )
+    central.add_argument("--product-config", required=True, help="제품 manifest YAML 경로")
+    central.add_argument("--run", help="기존 simulate 결과 폴더; 생략하면 support만 검사")
+    central.add_argument("--output", required=True, help="비어 있는 별도 분석 출력 폴더")
+    central.set_defaults(func=_analyze_central)
+
+    dedup = subparsers.add_parser(
+        "analyze-cno-open", help="명시 회로 관계에 따른 CNO/open 중복 회계"
+    )
+    dedup.add_argument("--product-config", required=True)
+    dedup.add_argument("--adapter-sidecar", required=True)
+    dedup.add_argument("--run", required=True, help="독립적으로 계산한 nominal 원시 결과")
+    dedup.add_argument("--output", required=True, help="별도 빈 결과 디렉터리")
+    dedup.set_defaults(func=_analyze_cno_open)
 
     fab = subparsers.add_parser("apply-fab", help="CA에 Fab 이물 분포를 곱해 기대 위험을 만든다")
     fab.add_argument("--ca", help="이전 방식: simulate-* 결과의 ca.parquet 경로")

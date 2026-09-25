@@ -20,6 +20,12 @@ class ContactHole:
     # effective contact pixels: hole ∩ lower electrode ∩ upper electrode
     ys: np.ndarray
     xs: np.ndarray
+    # Physical TR-cut component, distinct from the effective endpoint above.
+    cut_ys: np.ndarray
+    cut_xs: np.ndarray
+    raw_pixels: int | None  # None when the input supplies only a cut mask
+    cut_pixels: int
+    effective_pixels: int
 
 
 @dataclass(frozen=True)
@@ -61,6 +67,7 @@ def build_contact_topology(
     *,
     strict: bool,
     manifest_path: str | None = None,
+    raw_contact_masks: dict[str, np.ndarray] | None = None,
 ) -> ContactTopology:
     """Map every contact hole to its lower and upper electrode.
 
@@ -75,6 +82,17 @@ def build_contact_topology(
     for position, contact in enumerate(manifest.contacts):
         field = f"contacts[{position}]"
         mask = contact_masks[contact.contact_id]
+        raw_labels = None
+        if raw_contact_masks is not None:
+            raw_mask = raw_contact_masks[contact.contact_id]
+            if raw_mask.shape != mask.shape or np.any(mask & ~raw_mask):
+                raise InputContractError(
+                    f"contact '{contact.contact_id}'의 cut mask가 raw mask와 맞지 않습니다",
+                    product_id=manifest.product_id,
+                    file=manifest_path,
+                    field=f"{field}.path",
+                )
+            raw_labels, _ = label(raw_mask)
         lower_layer, upper_layer = resolve_contact_layers(manifest.stack, contact)
         assert lower_layer is not None and upper_layer is not None
         for layer_name in (lower_layer, upper_layer):
@@ -94,6 +112,29 @@ def build_contact_topology(
             )
         for hole_index in range(1, count + 1):
             ys, xs = np.nonzero(labels == hole_index)
+            if (ys.min() == 0 or xs.min() == 0 or
+                    ys.max() == mask.shape[0] - 1 or xs.max() == mask.shape[1] - 1):
+                if strict:
+                    raise InputContractError(
+                        f"contact '{contact.contact_id}'의 hole {hole_index}가 ROI edge에 닿아 "
+                        "전체 physical hole 면적을 확인할 수 없습니다",
+                        product_id=manifest.product_id,
+                        file=manifest_path,
+                        field=f"{field}.path",
+                    )
+                lost += 1
+                continue
+            raw_pixels = None
+            if raw_labels is not None:
+                raw_hits = set(raw_labels[ys, xs].tolist()) - {0}
+                if len(raw_hits) != 1:
+                    raise InputContractError(
+                        f"contact '{contact.contact_id}'의 cut hole {hole_index}가 여러 raw hole을 합칩니다",
+                        product_id=manifest.product_id,
+                        file=manifest_path,
+                        field=f"{field}.path",
+                    )
+                raw_pixels = int(np.count_nonzero(raw_labels == raw_hits.pop()))
             lower_hits = sorted(set(lower_index[ys, xs].tolist()) - {0})
             upper_hits = sorted(set(upper_index[ys, xs].tolist()) - {0})
             problem: str | None = None
@@ -133,6 +174,11 @@ def build_contact_topology(
                     upper_electrode=upper_id,
                     ys=ys[effective],
                     xs=xs[effective],
+                    cut_ys=ys,
+                    cut_xs=xs,
+                    raw_pixels=raw_pixels,
+                    cut_pixels=len(ys),
+                    effective_pixels=int(np.count_nonzero(effective)),
                 )
             )
     links: dict[str, list[ContactHole]] = {}
