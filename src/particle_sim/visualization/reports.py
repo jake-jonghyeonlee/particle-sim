@@ -305,10 +305,17 @@ def make_probability_report(run_dir: Path, manifest_path: Path) -> Path:
          "ca_union_mean_um2", "ca_union_p05_um2", "ca_union_p95_um2",
          "ca_raw_unit_sum_mean_um2"],
         [
-            [r.source_step, r.failure_mode, r.failure_unit_ids,
-             float(r.ca_union_nominal_um2), float(r.ca_union_mean_um2),
-             float(r.ca_union_p05_um2), float(r.ca_union_p95_um2),
-             float(r.ca_raw_unit_sum_mean_um2)]
+            [r.source_step, r.failure_mode,
+             getattr(r, "failure_unit_ids", getattr(r, "pair_ids", "해당 없음")),
+             float(r.ca_union_nominal_um2),
+             *[float(getattr(r, column)) if hasattr(r, column) else "해당 없음"
+               for column in ("ca_union_mean_um2", "ca_union_p05_um2",
+                              "ca_union_p95_um2", "ca_raw_unit_sum_mean_um2")]]
+            if hasattr(r, "ca_union_mean_um2") else
+            [r.source_step, r.failure_mode, getattr(r, "pair_ids", "해당 없음"),
+             "해당 없음", float(r.ca_union_nominal_um2), "해당 없음", "해당 없음",
+             float(r.ca_pair_sum_nominal_um2) if hasattr(r, "ca_pair_sum_nominal_um2")
+             else "해당 없음"]
             for r in union_rows.itertuples(index=False)
         ],
     )

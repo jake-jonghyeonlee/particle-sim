@@ -156,7 +156,7 @@ def plot_convergence(convergence: pd.DataFrame, step_id: str, path: Path) -> Pat
             group_keys.append("scramble_seed")
         for key, sized in group.groupby(group_keys, sort=True):
             size = float(key[0] if isinstance(key, tuple) else key)
-            seed = key[1] if isinstance(key, tuple) else None
+            seed = key[1] if isinstance(key, tuple) and len(key) > 1 else None
             sized = sized.sort_values("scenario_count")
             ax.plot(
                 sized["scenario_count"],

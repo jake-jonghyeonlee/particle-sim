@@ -751,3 +751,82 @@ overlay_um:
     run_manifest = json.loads(result.run_manifest.read_text(encoding="utf-8"))
     assert run_manifest["scenario_exclusions"] == []
     assert not any("SCENARIO_EXCLUSION" in w for w in run_manifest["warnings"])
+
+
+@pytest.mark.parametrize("strict", [True, False])
+def test_cno_unit_id_collision_is_rejected(tmp_path: Path, strict: bool) -> None:
+    path = _contact_case(tmp_path)
+    data = yaml.safe_load(path.read_text())
+    data["electrodes"] = [
+        {"electrode_id": name, "layer_name": layer, "net_id": "N1",
+         "electrode_role": "DATA", "path": f"masks/electrode_{name}.png"}
+        for name, layer in [("P__Q", "M1"), ("P", "M1"),
+                            ("W", "M2"), ("Q__W", "M2")]
+    ]
+    path.write_text(yaml.safe_dump(data))
+    left = _rect(24, 36, 8, 18)
+    right = _rect(24, 36, 62, 72)
+    electrodes = {"P__Q": left, "P": right, "W": left, "Q__W": right}
+    for name, mask in electrodes.items():
+        _save(tmp_path / f"masks/electrode_{name}.png", mask)
+    _save(tmp_path / "masks/layer_M2.png", left | right)
+    manifest = load_manifest(path)
+    with pytest.raises(InputContractError, match="CNO unit_id .*중복됩니다") as caught:
+        build_contact_topology(
+            manifest, {"CNT": _rect(28, 32, 11, 15) | _rect(28, 32, 65, 69)},
+            electrodes, strict=strict, manifest_path=str(path),
+        )
+    assert caught.value.product_id == manifest.product_id
+    assert caught.value.file == str(path)
+    assert caught.value.field == "contacts[0].path"
+    if strict:
+        from particle_sim.cli import main
+
+        assert main(["validate-input", "--product-config", str(path)]) == 2
+
+
+def _scenario_collision_case(tmp_path: Path, *, ambiguous: bool = True) -> Path:
+    path = _contact_case(tmp_path, holes=_rect(28, 32, 9, 13) | _rect(28, 32, 38, 42))
+    data = yaml.safe_load(path.read_text())
+    groups = {
+        "M1": {"P__Q": _rect(24, 36, 5, 17), "P": _rect(24, 36, 34, 62)},
+        "M2": {"W": _rect(24, 36, 5, 17), "W2": _rect(24, 36, 34, 46),
+               "Q__W" if ambiguous else "Q__X": _rect(24, 36, 48, 62)},
+    }
+    data["electrodes"] = [
+        {"electrode_id": name, "layer_name": layer, "net_id": "N1",
+         "electrode_role": "DATA", "path": f"masks/electrode_{name}.png"}
+        for layer, group in groups.items() for name in group
+    ]
+    for layer, group in groups.items():
+        _save(tmp_path / f"masks/layer_{layer}.png", np.logical_or.reduce(list(group.values())))
+        for name, mask in group.items():
+            _save(tmp_path / f"masks/electrode_{name}.png", mask)
+    path.write_text(yaml.safe_dump(data))
+    return path
+
+
+def test_scenario_only_cno_collision_is_rejected_at_load(tmp_path: Path) -> None:
+    from particle_sim.cli import main
+
+    path = _scenario_collision_case(tmp_path)
+    manifest = load_manifest(path)
+    with pytest.raises(InputContractError, match="CNO unit_id .*중복됩니다") as caught:
+        load_product_masks(manifest, path)
+    assert caught.value.product_id == manifest.product_id
+    assert caught.value.file == str(path)
+    assert caught.value.field == "contacts[0].path"
+    assert main(["validate-input", "--product-config", str(path)]) == 2
+
+
+def test_unambiguous_double_underscore_ids_load_and_transform(tmp_path: Path) -> None:
+    manifest, masks = _load(_scenario_collision_case(tmp_path, ambiguous=False))
+    assert set(masks.contact_topology.links) == {"cno:CNT:P__Q__W", "cno:CNT:P__W2"}
+    scenario = Scenario(
+        scenario_id=0, thickness_delta_um={}, overlay_xy_um={"GI": (6.0, 0.0)},
+        cd_bias_um={}, particle_diameter_delta_um=0.0, center_offset_xy_um=(0.0, 0.0),
+        embedding_depth_um=None, planarization_factor={}, contact_margin_um=None,
+    )
+    moved = apply_scenario_to_masks(manifest, masks, scenario)
+    assert set(moved.contact_topology.links) == {"cno:CNT:P__Q__X"}
+    assert moved.contact_topology.lost_holes == 1

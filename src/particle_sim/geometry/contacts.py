@@ -102,6 +102,26 @@ def build_contact_topology(
                 )
         lower_index, lower_ids = index_cache[lower_layer]
         upper_index, upper_ids = index_cache[upper_layer]
+        if strict:
+            # Overlay/CD changes can relink holes to any same-net pair on these layers.
+            # Check identities even when the nominal geometry has no hole for that pair.
+            possible_links: dict[str, tuple[str, str]] = {}
+            for lower_id in lower_ids:
+                for upper_id in upper_ids:
+                    if net_of[lower_id] != net_of[upper_id]:
+                        continue
+                    unit_id = cno_unit_id(contact.contact_id, lower_id, upper_id)
+                    identity = (lower_id, upper_id)
+                    previous = possible_links.get(unit_id)
+                    if previous is not None and previous != identity:
+                        raise InputContractError(
+                            f"contact '{contact.contact_id}'의 CNO unit_id '{unit_id}'가 "
+                            f"서로 다른 전극쌍 {previous}, {identity}에 중복됩니다",
+                            product_id=manifest.product_id,
+                            file=manifest_path,
+                            field=f"{field}.path",
+                        )
+                    possible_links[unit_id] = identity
         labels, count = label(mask)
         if strict and count == 0:
             raise InputContractError(
@@ -184,6 +204,21 @@ def build_contact_topology(
     links: dict[str, list[ContactHole]] = {}
     for hole in holes:
         unit_id = cno_unit_id(hole.contact_id, hole.lower_electrode, hole.upper_electrode)
+        members = links.get(unit_id)
+        if members:
+            first = members[0]
+            identity = (hole.contact_id, hole.lower_electrode, hole.upper_electrode)
+            previous = (first.contact_id, first.lower_electrode, first.upper_electrode)
+            if identity != previous:
+                position = next(i for i, c in enumerate(manifest.contacts)
+                                if c.contact_id == hole.contact_id)
+                raise InputContractError(
+                    f"CNO unit_id '{unit_id}'가 서로 다른 contact 전극쌍 "
+                    f"{previous}, {identity}에 중복됩니다",
+                    product_id=manifest.product_id,
+                    file=manifest_path,
+                    field=f"contacts[{position}].path",
+                )
         links.setdefault(unit_id, []).append(hole)
     return ContactTopology(
         holes=tuple(holes),
