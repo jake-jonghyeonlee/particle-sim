@@ -14,6 +14,7 @@ from particle_sim.io.stack import build_stack_z
 from particle_sim.schema import todo_physics_warnings
 from particle_sim.units import unit_specs
 from particle_sim.validation.electrode_pairs import audit_electrode_pairs
+from particle_sim.validation.short_feasibility import structural_zero_short_warnings
 
 
 def _print_json(payload: dict) -> None:
@@ -65,7 +66,8 @@ def _validate_input(args: argparse.Namespace) -> int:
             "unresolved_electrode_pairs": sum(
                 row.status == "unresolved" for row in pair_audit
             ),
-            "warnings": todo_physics_warnings(manifest),
+            "warnings": [*todo_physics_warnings(manifest),
+                         *structural_zero_short_warnings(manifest, stack_z)],
         }
     )
     return 0

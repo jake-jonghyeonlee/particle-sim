@@ -67,6 +67,7 @@ from particle_sim.validation.convergence import (
     is_converged,
 )
 from particle_sim.validation.regression import explain_legacy_vs_edt
+from particle_sim.validation.short_feasibility import structural_zero_short_warnings
 
 # scenario classifications that are excluded from particle-caused CA and must be reported
 SCENARIO_EXCLUSIONS = (*EXCLUDED_CLASSIFICATIONS, CONTACT_LOST, INSUFFICIENT_TERMINALS)
@@ -468,7 +469,8 @@ def run_nominal(
         particle_sizes_um=[float(s) for s in sizes],
         source_steps=[s.step_id for s in steps],
         assumption_set=assumption_set,
-        warnings=todo_physics_warnings(manifest),
+        warnings=[*todo_physics_warnings(manifest),
+                  *structural_zero_short_warnings(manifest, stack_z)],
         legacy_kernel=manifest.legacy_kernel.model_dump(mode="json"),
         post_step_policy=manifest.post_step_policy.model_dump(mode="json"),
         created_at=created_at,
@@ -834,7 +836,9 @@ def run_probability(
             particle_sizes_um=[float(s) for s in sizes],
             source_steps=[s.step_id for s in steps],
             assumption_set=assumption_set,
-            warnings=[*todo_physics_warnings(manifest), *scenario_warnings(scenario_config)],
+            warnings=[*todo_physics_warnings(manifest),
+                      *scenario_warnings(scenario_config),
+                      *structural_zero_short_warnings(manifest, stack_z)],
             legacy_kernel=manifest.legacy_kernel.model_dump(mode="json"),
             post_step_policy=manifest.post_step_policy.model_dump(mode="json"),
             created_at=created_at,

@@ -103,7 +103,29 @@ uv run particle-sim compare-sim \
 `export-simcompare`는 [particle-sim-compare](https://github.com/jake-jonghyeonlee/particle-sim-compare)의
 adapter 입력 형식(`bundles.csv`, `layouts.csv`, `hotspots.csv`, `ca_records.csv`,
 `layer_stack.csv`, `geometry.json`, `provenance.json`, `arrays/*.npy`)으로 내보낸다.
+명목(`simulate-nominal`) 결과만 지원하며 확률 결과는 내보내지 않는다.
+Layout은 전극별 `arrays/layout-<sanitized electrode ID>.npy` 한 파일을 모든 step/sample에서 공유한다.
+이진 layout/hotspot은 uint8(0/1) NPY로 저장하고 비이진 hotspot은 float32를 보존하여 adapter에서
+기존 float32 값과 동일하게 읽힌다. `provenance.json`의 `array_storage`에 형식/dtype/중복 제거 정책을 기록한다.
+쓰기 전 float32 hotspot을 가정한 보수적 용량 추정치와 출력 부모의 여유 공간을 비교하며 부족하면
+아무 파일도 쓰지 않는다. 같은 부모의 임시 디렉터리에 완성한 뒤 출력 경로로 atomic rename하고,
+실패하면 임시 출력을 제거한다. 비어 있지 않은 출력 경로는 계속 덮어쓰지 않는다.
+`electrode_pair`의 lateral/vertical short와 `open_path` / `open_electrode`의 lateral open을
+지원한다. Open은 b 전극 역할과 layer를 `N/A`로 기록하고 a layout만 생성한다.
+`contact` / `contact_not_open`은 제외하고 raw unit ID별 이유를 `export_warnings.json`에
+기록한다. Open의 baseline_open, terminal_lost, insufficient_terminals는 계속 내보내되
+step과 raw unit ID별로 CA 0이 낮은 위험이 아니라 제외된 baseline 조건임을 경고한다.
+CNO만 있는 실행도 header-only CSV로 성공하지만 분석 가능한 데이터셋은 아니다.
+적용되지 않는 source step은 제외한다. Sample ID는 product-version-step-unit을 이어 붙인 뒤
+`[A-Za-z0-9_.-]` 밖의 문자 각각을 `_`로 바꾸며, Sample ID 또는 대소문자를 구분하지 않는 array 경로가
+충돌하면 파일 생성 전에 입력 오류로 중단한다.
+원본 tuple과 ID 대응은 `provenance.json`의 `sample_id_mapping`에 기록한다.
 Fab 자료(`fab.json` / `fab_measurements.csv`)는 생성하지 않으며 `export_warnings.json`에 남는다.
+Vertical short의 `assigned_process_layer`는 비워 두고 경고를 보존한다.
+
+`validate-input`과 `run_manifest.json`은 flat 표면에서 접촉 여유와 매립 깊이가 모두 0이면
+접촉이 불가능한 short pair 수를 step별 `STRUCTURAL_ZERO_SHORT` 경고로 기록한다.
+후속 layer는 exclude 정책일 때만 포함하며, open/CNO 및 계산 결과는 바꾸지 않는다.
 
 ## 핵심 규칙
 

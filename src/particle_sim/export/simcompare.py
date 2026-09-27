@@ -5,6 +5,8 @@ from __future__ import annotations
 import csv
 import json
 import re
+import shutil
+import tempfile
 from pathlib import Path
 
 import numpy as np
@@ -12,9 +14,12 @@ import pandas as pd
 
 from particle_sim.config import load_manifest
 from particle_sim.errors import InputContractError
+from particle_sim.failure.auto_open import INSUFFICIENT_TERMINALS
+from particle_sim.failure.open_failure import BASELINE_OPEN, TERMINAL_LOST
 from particle_sim.io.masks import load_product_masks
 from particle_sim.io.outputs import check_run_manifest, open_hotspot_store
 from particle_sim.io.stack import build_stack_z
+from particle_sim.units import NOT_APPLICABLE_STEP, unit_specs
 
 BUNDLE_COLUMNS = (
     "sample_id", "product_id", "product_family", "design_version", "design_lineage_id",
@@ -47,7 +52,7 @@ def _write_csv(path: Path, columns: tuple[str, ...], rows: list[dict]) -> None:
 
 
 def export_simcompare(run_dir: Path, manifest_path: Path, out_dir: Path) -> Path:
-    """Write simcompare bundles/layouts/hotspots/ca_records for every (step, pair)."""
+    """Write simcompare bundles/layouts/hotspots/ca_records for every applicable supported (step, unit)."""
     run_dir = Path(run_dir)
     manifest_path = Path(manifest_path)
     out_dir = Path(out_dir)
@@ -90,7 +95,8 @@ def export_simcompare(run_dir: Path, manifest_path: Path, out_dir: Path) -> Path
             file=str(run_manifest_path),
             field=missing[0],
         )
-    missing_columns = [c for c in ("source_step", "pair_id", "particle_size_um",
+    ca_id = "failure_unit_id" if "failure_unit_id" in ca.columns else "pair_id"
+    missing_columns = [c for c in ("source_step", ca_id, "particle_size_um",
                                    "ca_nominal_normalized") if c not in ca.columns]
     if missing_columns:
         raise InputContractError(
@@ -99,7 +105,7 @@ def export_simcompare(run_dir: Path, manifest_path: Path, out_dir: Path) -> Path
             file=str(run_dir / "ca.parquet"),
             field=missing_columns[0],
         )
-    missing_attrs = [a for a in ("source_steps", "particle_sizes_um", "pair_ids")
+    missing_attrs = [a for a in ("source_steps", "particle_sizes_um")
                      if a not in store.attrs]
     if missing_attrs or "nominal_failure" not in store:
         raise InputContractError(
@@ -118,124 +124,208 @@ def export_simcompare(run_dir: Path, manifest_path: Path, out_dir: Path) -> Path
 
     step_ids = list(store.attrs["source_steps"])
     sizes = [float(s) for s in store.attrs["particle_sizes_um"]]
-    pair_ids = list(store.attrs["pair_ids"])
+
+    def contract(message: str, field: str = "failure_unit_ids") -> None:
+        raise InputContractError(message, product_id=product_id, field=field)
+
+    raw_ids = store.attrs.get("failure_unit_ids", store.attrs.get("pair_ids"))
+    if raw_ids is None:
+        contract("hotspots.zarr에 failure_unit_ids 또는 pair_ids가 필요합니다")
+    pair_ids = list(raw_ids)
+    if "pair_ids" in store.attrs and list(store.attrs["pair_ids"]) != pair_ids:
+        contract("failure_unit_ids와 pair_ids가 다릅니다")
+    if len(set(pair_ids)) != len(pair_ids):
+        contract("hotspots.zarr에 중복 unit ID가 있습니다")
     nominal = store["nominal_failure"]
     steps = {s.step_id: s for s in manifest.particle_source_steps}
-    pairs = {p.pair_id: p for p in manifest.electrode_pairs}
+    specs = {u.unit_id: u for u in unit_specs(manifest, masks)}
     electrodes = {e.electrode_id: e for e in manifest.electrodes}
     pixel_size = grid.pixel_size_x_um
     calc_version = f"particle-sim-{run_manifest['simulator_version']}"
+    warnings: list[str] = [FAB_INPUT_WARNING]
+    for attr, member in (("unit_kinds", "unit_kind"), ("pair_modes", "failure_mode")):
+        values = store.attrs.get(attr)
+        if values is not None and len(values) != len(pair_ids):
+            contract(f"{attr} 길이가 unit 축과 다릅니다", attr)
+        for index, unit_id in enumerate(pair_ids):
+            if unit_id not in specs:
+                contract(f"알 수 없는 failure unit ID: {unit_id!r}")
+            if values is not None and values[index] != getattr(specs[unit_id], member):
+                contract(f"{unit_id!r}: {attr}가 manifest와 다릅니다", attr)
+    if nominal.shape != (len(step_ids), len(sizes), len(pair_ids), *grid.shape_yx):
+        contract("nominal_failure shape가 축/마스크와 다릅니다", "nominal_failure")
+    if "failure_unit_id" in ca and "pair_id" in ca and not ca.failure_unit_id.equals(ca.pair_id):
+        contract("ca.parquet failure_unit_id와 pair_id가 다릅니다")
 
-    arrays_dir = out_dir / "arrays"
-    arrays_dir.mkdir(parents=True, exist_ok=True)
+    # Validate the complete sample set before creating any output files.
+    samples = []
+    identities: dict[str, tuple[str, str, str, str]] = {}
+    sample_id_mapping = []
+    array_paths: dict[str, tuple[str, str]] = {}
+    layout_paths: dict[str, str] = {}
+    for unit_id in pair_ids:
+        spec = specs[unit_id]
+        if spec.unit_kind == "contact" and spec.failure_mode == "contact_not_open":
+            warnings.append(f"{unit_id}: kind={spec.unit_kind}, mode={spec.failure_mode}; "
+                            "excluded: simcompare does not support contact_not_open")
+        elif (spec.unit_kind, spec.failure_mode) not in {
+            ("electrode_pair", "lateral_short"), ("electrode_pair", "vertical_short"),
+            ("open_path", "lateral_open"), ("open_electrode", "lateral_open"),
+        }:
+            contract(f"지원하지 않는 unit metadata: {unit_id!r}")
+    for step_index, step_id in enumerate(step_ids):
+        if step_id not in steps:
+            contract(f"알 수 없는 source step: {step_id!r}", "source_steps")
+        for pair_index, pair_id in enumerate(pair_ids):
+            pair = specs[pair_id]
+            if pair.unit_kind == "contact":
+                continue
+            rows = ca[(ca["source_step"] == step_id) & (ca[ca_id] == pair_id)]
+            for column, expected in (("unit_kind", pair.unit_kind),
+                                     ("failure_mode", pair.failure_mode)):
+                if column in rows and not rows[column].eq(expected).all():
+                    contract(f"{pair_id!r}: ca.parquet {column}가 manifest와 다릅니다", column)
+            values = []
+            classifications = []
+            for size in sizes:
+                match = rows[np.isclose(rows["particle_size_um"].astype(float), size)]
+                if len(match) != 1:
+                    contract(f"ca.parquet에서 ({step_id}, {pair_id}, {size:g} um) 행이 "
+                             f"{len(match)}개입니다", "ca_nominal_normalized")
+                values.append(float(match["ca_nominal_normalized"].iloc[0]))
+                if "classification" in match:
+                    classifications.append(match["classification"].iloc[0])
+            if len(set(classifications)) > 1:
+                contract(f"({step_id}, {pair_id}): mixed classifications", "classification")
+            skipped = classifications == [NOT_APPLICABLE_STEP] * len(sizes)
+            applicable = pair.applicable_steps is None or step_id in pair.applicable_steps
+            if classifications and skipped == applicable:
+                contract(f"({step_id}, {pair_id}): applicability contradicts manifest",
+                         "classification")
+            if skipped:
+                continue
+            if not all(np.isfinite(values)):
+                contract(f"({step_id}, {pair_id}): ca_value must be finite", "ca_nominal_normalized")
+            raw_tuple = (product_id, manifest.design_version, step_id, pair_id)
+            sample_id = re.sub(r"[^A-Za-z0-9_.-]", "_", "-".join(raw_tuple))
+            previous = identities.get(sample_id)
+            if previous is not None and previous != raw_tuple:
+                contract(f"sample_id collision {sample_id!r}: {previous!r} and {raw_tuple!r}",
+                         "sample_id")
+            identities[sample_id] = raw_tuple
+            slots = ("a",) if pair.failure_mode == "lateral_open" else ("a", "b")
+            paths = []
+            for slot in slots:
+                electrode_id = pair.electrode_a if slot == "a" else pair.electrode_b
+                if electrode_id not in layout_paths:
+                    sanitized = re.sub(r"[^A-Za-z0-9_.-]", "_", electrode_id)
+                    rel = f"arrays/layout-{sanitized}.npy"
+                    layout_paths[electrode_id] = rel
+                    paths.append(rel)
+            paths.extend(f"arrays/{sample_id}-hot{size:g}.npy" for size in sizes)
+            for path in paths:
+                previous_path = array_paths.get(path.casefold())
+                if previous_path is not None:
+                    contract(f"array path collision {path!r}: sample {previous_path[0]!r} "
+                             f"({previous_path[1]!r}) and sample {sample_id!r} ({path!r})",
+                             "array_path")
+                array_paths[path.casefold()] = (sample_id, path)
+            if (pair.failure_mode == "lateral_open" and classifications and
+                    classifications[0] in (BASELINE_OPEN, TERMINAL_LOST, INSUFFICIENT_TERMINALS)):
+                warnings.append(
+                    f"{pair_id!r}: step={step_id!r}, classification={classifications[0]}; "
+                    "CA 0 reflects an excluded baseline condition, not low risk"
+                )
+            sample_id_mapping.append({"raw_tuple": list(raw_tuple), "sample_id": sample_id})
+            samples.append((step_index, step_id, pair_index, pair, sample_id, values))
+
+    hotspot_writes = []
     bundles: list[dict] = []
     layouts: list[dict] = []
     hotspots: list[dict] = []
     ca_records: list[dict] = []
     geometry: dict[str, dict] = {}
-    warnings: list[str] = [FAB_INPUT_WARNING]
     thickness = {name: layer.thickness_um for name, layer in stack_z.items()}
 
-    for step_index, step_id in enumerate(step_ids):
+    for step_index, step_id, pair_index, pair, sample_id, values in samples:
         step = steps[step_id]
-        for pair_index, pair_id in enumerate(pair_ids):
-            pair = pairs[pair_id]
-            sample_id = f"{product_id}-{manifest.design_version}-{step_id}-{pair_id}"
-            if not _SAMPLE_ID.match(sample_id):
-                raise InputContractError(
-                    f"sample_id에 허용되지 않는 문자가 있습니다: {sample_id!r}",
-                    product_id=product_id,
-                    field="sample_id",
-                )
-            ea = electrodes[pair.electrode_a]
-            eb = electrodes[pair.electrode_b]
-            if pair.failure_mode == "vertical_short":
-                assigned = ""
-                warnings.append(
-                    f"{sample_id}: simcompare는 vertical_short의 Fab layer를 상부 전극 layer로 "
-                    f"강제하지만 simulator는 이물 발생 공정({step_id}) 기준이므로 "
-                    "assigned_process_layer를 비워 두었습니다"
-                )
-            else:
-                assigned = step.fab_distribution_layer
-            bundles.append(
+        ea = electrodes[pair.electrode_a]
+        eb = None if pair.failure_mode == "lateral_open" else electrodes[pair.electrode_b]
+        if pair.failure_mode == "vertical_short":
+            assigned = ""
+            warnings.append(
+                f"{sample_id}: simcompare는 vertical_short의 Fab layer를 상부 전극 layer로 "
+                f"강제하지만 simulator는 이물 발생 공정({step_id}) 기준이므로 "
+                "assigned_process_layer를 비워 두었습니다"
+            )
+        else:
+            assigned = step.fab_distribution_layer
+        bundles.append(
+            {
+                "sample_id": sample_id,
+                "product_id": product_id,
+                "product_family": manifest.product_family,
+                "design_version": manifest.design_version,
+                "design_lineage_id": manifest.design_lineage_id,
+                "electrode_a_role": ea.electrode_role,
+                "electrode_b_role": eb.electrode_role if eb else "N/A",
+                "layer_a": ea.layer_name,
+                "layer_b": eb.layer_name if eb else "N/A",
+                "failure_type": pair.failure_mode,
+                "fab_id": manifest.fab_id,
+                "fab_distribution_id": None,
+                "assigned_process_layer": assigned,
+                "unit_width": manifest.coordinate_system.roi_width_um,
+                "unit_height": manifest.coordinate_system.roi_height_um,
+                "physical_length_unit": "um",
+                "parent_design_id": None,
+                "change_description": None,
+                "calc_version": calc_version,
+            }
+        )
+        slots = [("a", pair.electrode_a)]
+        if eb is not None:
+            slots.append(("b", pair.electrode_b))
+        for slot, electrode_id in slots:
+            rel = layout_paths[electrode_id]
+            layouts.append(
                 {
                     "sample_id": sample_id,
-                    "product_id": product_id,
-                    "product_family": manifest.product_family,
-                    "design_version": manifest.design_version,
-                    "design_lineage_id": manifest.design_lineage_id,
-                    "electrode_a_role": ea.electrode_role,
-                    "electrode_b_role": eb.electrode_role,
-                    "layer_a": ea.layer_name,
-                    "layer_b": eb.layer_name,
-                    "failure_type": pair.failure_mode,
-                    "fab_id": manifest.fab_id,
-                    "fab_distribution_id": None,
-                    "assigned_process_layer": assigned,
-                    "unit_width": manifest.coordinate_system.roi_width_um,
-                    "unit_height": manifest.coordinate_system.roi_height_um,
-                    "physical_length_unit": "um",
-                    "parent_design_id": None,
-                    "change_description": None,
-                    "calc_version": calc_version,
+                    "slot": slot,
+                    "path": rel,
+                    "pixel_size": pixel_size,
+                    "origin_x": 0.0,
+                    "origin_y": 0.0,
                 }
             )
-            for slot, electrode_id in (("a", pair.electrode_a), ("b", pair.electrode_b)):
-                rel = f"arrays/{sample_id}-{slot}.npy"
-                np.save(out_dir / rel, masks.electrodes[electrode_id].astype(np.float32))
-                layouts.append(
-                    {
-                        "sample_id": sample_id,
-                        "slot": slot,
-                        "path": rel,
-                        "pixel_size": pixel_size,
-                        "origin_x": 0.0,
-                        "origin_y": 0.0,
-                    }
-                )
-            for size_index, size in enumerate(sizes):
-                rel = f"arrays/{sample_id}-hot{size:g}.npy"
-                hotspot = np.asarray(nominal[step_index, size_index, pair_index], dtype=np.float32)
-                np.save(out_dir / rel, hotspot)
-                hotspots.append(
-                    {
-                        "sample_id": sample_id,
-                        "particle_size": size,
-                        "path": rel,
-                        "particle_size_unit": "um",
-                        "pixel_size": pixel_size,
-                        "origin_x": 0.0,
-                        "origin_y": 0.0,
-                    }
-                )
-                match = ca[
-                    (ca["source_step"] == step_id)
-                    & (ca["pair_id"] == pair_id)
-                    & np.isclose(ca["particle_size_um"].astype(float), size)
-                ]
-                if len(match) != 1:
-                    raise InputContractError(
-                        f"ca.parquet에서 ({step_id}, {pair_id}, {size:g} um) 행이 "
-                        f"{len(match)}개입니다",
-                        product_id=product_id,
-                        file=str(run_dir / "ca.parquet"),
-                        field="ca_nominal_normalized",
-                    )
-                ca_records.append(
-                    {
-                        "sample_id": sample_id,
-                        "particle_size": size,
-                        "particle_size_unit": "um",
-                        "ca_value": float(match["ca_nominal_normalized"].iloc[0]),
-                        "ca_unit": "1",
-                    }
-                )
-            geometry[sample_id] = {
-                "thickness": thickness,
-                "shape_metrics": {},
-                "length_unit": "um",
-            }
+        for size_index, size in enumerate(sizes):
+            rel = f"arrays/{sample_id}-hot{size:g}.npy"
+            hotspot_writes.append((rel, step_index, size_index, pair_index))
+            hotspots.append(
+                {
+                    "sample_id": sample_id,
+                    "particle_size": size,
+                    "path": rel,
+                    "particle_size_unit": "um",
+                    "pixel_size": pixel_size,
+                    "origin_x": 0.0,
+                    "origin_y": 0.0,
+                }
+            )
+            ca_records.append(
+                {
+                    "sample_id": sample_id,
+                    "particle_size": size,
+                    "particle_size_unit": "um",
+                    "ca_value": values[size_index],
+                    "ca_unit": "1",
+                }
+            )
+        geometry[sample_id] = {
+            "thickness": thickness,
+            "shape_metrics": {},
+            "length_unit": "um",
+        }
 
     layer_stack = [
         {
@@ -247,11 +337,6 @@ def export_simcompare(run_dir: Path, manifest_path: Path, out_dir: Path) -> Path
         }
         for layer in stack_z.values()
     ]
-    _write_csv(out_dir / "bundles.csv", BUNDLE_COLUMNS, bundles)
-    _write_csv(out_dir / "layouts.csv", LAYOUT_COLUMNS, layouts)
-    _write_csv(out_dir / "hotspots.csv", HOTSPOT_COLUMNS, hotspots)
-    _write_csv(out_dir / "ca_records.csv", CA_RECORD_COLUMNS, ca_records)
-    _write_csv(out_dir / "layer_stack.csv", LAYER_STACK_COLUMNS, layer_stack)
     provenance = {
         "calc_settings": {
             "run_id": run_manifest["run_id"],
@@ -263,13 +348,71 @@ def export_simcompare(run_dir: Path, manifest_path: Path, out_dir: Path) -> Path
         },
         "calc_version": calc_version,
         "is_synthetic": manifest.is_synthetic,
+        "sample_id_mapping": sample_id_mapping,
+        "array_storage": {
+            "format": "npy",
+            "layout_dtype": "uint8",
+            "hotspot_dtype": "uint8 if binary, otherwise float32",
+            "layout_deduplication": "one file per electrode_id across all samples and steps",
+        },
     }
-    for name, payload in (
-        ("geometry.json", geometry),
-        ("provenance.json", provenance),
-        ("export_warnings.json", warnings),
-    ):
-        (out_dir / name).write_text(
-            json.dumps(payload, indent=2, ensure_ascii=False) + "\n", encoding="utf-8"
+    json_outputs = {
+        name: json.dumps(payload, indent=2, ensure_ascii=False) + "\n"
+        for name, payload in (
+            ("geometry.json", geometry),
+            ("provenance.json", provenance),
+            ("export_warnings.json", warnings),
         )
+    }
+    csv_outputs = (
+        ("bundles.csv", BUNDLE_COLUMNS, bundles),
+        ("layouts.csv", LAYOUT_COLUMNS, layouts),
+        ("hotspots.csv", HOTSPOT_COLUMNS, hotspots),
+        ("ca_records.csv", CA_RECORD_COLUMNS, ca_records),
+        ("layer_stack.csv", LAYER_STACK_COLUMNS, layer_stack),
+    )
+    # Upper bound: allow float32 for every hotspot, NPY headers, CSV quoting,
+    # and filesystem allocation overhead; no need to read all planes twice.
+    pixels = int(np.prod(grid.shape_yx))
+    estimated_bytes = sum(pixels + 128 + 4096 for _ in layout_paths)
+    estimated_bytes += len(hotspot_writes) * (pixels * 4 + 128 + 4096)
+    estimated_bytes += sum(len(value.encode("utf-8")) + 4096
+                           for value in json_outputs.values())
+    for _, columns, rows in csv_outputs:
+        estimated_bytes += 4096 + sum(len(c.encode("utf-8")) + 3 for c in columns)
+        estimated_bytes += sum(
+            sum(2 * len(str(row[c]).encode("utf-8")) + 3 for c in columns)
+            for row in rows
+        )
+    parent = out_dir.absolute().parent
+    capacity_parent = parent
+    while not capacity_parent.exists():
+        capacity_parent = capacity_parent.parent
+    free_bytes = shutil.disk_usage(capacity_parent).free
+    if estimated_bytes > free_bytes:
+        contract(f"Insufficient disk space: estimated {estimated_bytes} bytes, "
+                 f"free {free_bytes} bytes", "output")
+
+    parent.mkdir(parents=True, exist_ok=True)
+    staging = Path(tempfile.mkdtemp(prefix=f".{out_dir.name}-", dir=parent))
+    try:
+        (staging / "arrays").mkdir()
+        for electrode_id, rel in layout_paths.items():
+            np.save(staging / rel, masks.electrodes[electrode_id].astype(np.uint8))
+        for rel, step_index, size_index, pair_index in hotspot_writes:
+            hotspot = np.asarray(nominal[step_index, size_index, pair_index], dtype=np.float32)
+            if np.all((hotspot == 0) | (hotspot == 1)):
+                hotspot = hotspot.astype(np.uint8)
+            np.save(staging / rel, hotspot)
+        for name, columns, rows in csv_outputs:
+            _write_csv(staging / name, columns, rows)
+        for name, content in json_outputs.items():
+            (staging / name).write_text(content, encoding="utf-8")
+        # Recheck the overwrite guard in case another process populated the target.
+        if out_dir.exists() and (not out_dir.is_dir() or any(out_dir.iterdir())):
+            contract(f"출력 경로가 비어 있지 않습니다(덮어쓰기 금지): {out_dir}", "output")
+        staging.rename(out_dir)
+    except BaseException:
+        shutil.rmtree(staging)
+        raise
     return out_dir
