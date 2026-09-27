@@ -11,6 +11,7 @@ from pathlib import Path
 
 import numpy as np
 import pandas as pd
+from PIL import Image
 
 from particle_sim.config import load_manifest
 from particle_sim.errors import InputContractError
@@ -49,6 +50,24 @@ def _write_csv(path: Path, columns: tuple[str, ...], rows: list[dict]) -> None:
         writer.writeheader()
         for row in rows:
             writer.writerow({key: "" if row[key] is None else str(row[key]) for key in columns})
+
+
+def _array_format(array: np.ndarray) -> str:
+    return "png" if np.all((array == 0) | (array == 1)) else "npy"
+
+
+def _write_array(path: Path, array: np.ndarray) -> None:
+    if path.suffix == ".png":
+        Image.fromarray(array.astype(np.uint8) * 255).save(path, compress_level=9)
+    else:
+        np.save(path, array.astype(np.float32))
+
+
+def _array_capacity(pixels: int, height: int, format: str) -> int:
+    # PNG row filters, worst-case DEFLATE expansion, headers and allocation slack.
+    raw = pixels + height
+    return (raw + raw // 1000 + 128 + 4096 if format == "png"
+            else pixels * 4 + 128 + 4096)
 
 
 def _fab_pair_key(raw_unit: str, layer_a: str, layer_b: str,
@@ -179,6 +198,8 @@ def export_simcompare(run_dir: Path, manifest_path: Path, out_dir: Path) -> Path
     pair_keys: dict[str, tuple[str, str, str]] = {}
     array_paths: dict[str, tuple[str, str]] = {}
     layout_paths: dict[str, str] = {}
+    array_formats: dict[str, str] = {}
+    hotspot_paths: dict[tuple[int, int, int], str] = {}
     for unit_id in pair_ids:
         spec = specs[unit_id]
         if spec.unit_kind == "contact" and spec.failure_mode == "contact_not_open":
@@ -247,10 +268,18 @@ def export_simcompare(run_dir: Path, manifest_path: Path, out_dir: Path) -> Path
                 electrode_id = pair.electrode_a if slot == "a" else pair.electrode_b
                 if electrode_id not in layout_paths:
                     sanitized = re.sub(r"[^A-Za-z0-9_.-]", "_", electrode_id)
-                    rel = f"arrays/layout-{sanitized}.npy"
+                    format = _array_format(masks.electrodes[electrode_id])
+                    rel = f"arrays/layout-{sanitized}.{format}"
+                    array_formats[rel] = format
                     layout_paths[electrode_id] = rel
                     paths.append(rel)
-            paths.extend(f"arrays/{sample_id}-hot{size:g}.npy" for size in sizes)
+            for size_index, size in enumerate(sizes):
+                plane = np.asarray(nominal[step_index, size_index, pair_index])
+                format = _array_format(plane)
+                rel = f"arrays/{sample_id}-hot{size:g}.{format}"
+                hotspot_paths[step_index, size_index, pair_index] = rel
+                array_formats[rel] = format
+                paths.append(rel)
             for path in paths:
                 previous_path = array_paths.get(path.casefold())
                 if previous_path is not None:
@@ -322,7 +351,7 @@ def export_simcompare(run_dir: Path, manifest_path: Path, out_dir: Path) -> Path
                 }
             )
         for size_index, size in enumerate(sizes):
-            rel = f"arrays/{sample_id}-hot{size:g}.npy"
+            rel = hotspot_paths[step_index, size_index, pair_index]
             hotspot_writes.append((rel, step_index, size_index, pair_index))
             hotspots.append(
                 {
@@ -374,9 +403,11 @@ def export_simcompare(run_dir: Path, manifest_path: Path, out_dir: Path) -> Path
         "is_synthetic": manifest.is_synthetic,
         "sample_id_mapping": sample_id_mapping,
         "array_storage": {
-            "format": "npy",
-            "layout_dtype": "uint8",
-            "hotspot_dtype": "uint8 if binary, otherwise float32",
+            "format": "per-array",
+            "formats": array_formats,
+            "binary_encoding": "8-bit grayscale PNG, 0/255, compression level 9",
+            "nonbinary_encoding": "float32 NPY",
+            "capacity_bound": "uncompressed uint8 PNG with row/DEFLATE overhead; float32 NPY",
             "layout_deduplication": "one file per electrode_id across all samples and steps",
         },
     }
@@ -395,17 +426,10 @@ def export_simcompare(run_dir: Path, manifest_path: Path, out_dir: Path) -> Path
         ("ca_records.csv", CA_RECORD_COLUMNS, ca_records),
         ("layer_stack.csv", LAYER_STACK_COLUMNS, layer_stack),
     )
-    # Inspect each plane to size the actual binary uint8 / nonbinary float32 output.
-    # Headers, CSV quoting and filesystem allocation retain conservative slack.
-    hotspot_dtypes = []
-    for _, si, di, ui in hotspot_writes:
-        plane = np.asarray(nominal[si, di, ui], dtype=np.float32)
-        hotspot_dtypes.append(np.dtype(np.uint8 if np.all((plane == 0) | (plane == 1))
-                                       else np.float32))
+    # Compression savings are deliberately excluded from the capacity bound.
     pixels = int(np.prod(grid.shape_yx))
-    estimated_bytes = sum(pixels + 128 + 4096 for _ in layout_paths)
-    estimated_bytes += sum(pixels * dtype.itemsize + 128 + 4096
-                           for dtype in hotspot_dtypes)
+    estimated_bytes = sum(_array_capacity(pixels, grid.shape_yx[0], format)
+                          for format in array_formats.values())
     estimated_bytes += sum(len(value.encode("utf-8")) + 4096
                            for value in json_outputs.values())
     for _, columns, rows in csv_outputs:
@@ -430,12 +454,10 @@ def export_simcompare(run_dir: Path, manifest_path: Path, out_dir: Path) -> Path
         # mkdir applies the process umask without temporarily changing global state.
         staging.chmod((staging / "arrays").stat().st_mode & 0o777)
         for electrode_id, rel in layout_paths.items():
-            np.save(staging / rel, masks.electrodes[electrode_id].astype(np.uint8))
-        for (rel, step_index, size_index, pair_index), dtype in zip(
-                hotspot_writes, hotspot_dtypes, strict=True):
+            _write_array(staging / rel, masks.electrodes[electrode_id])
+        for rel, step_index, size_index, pair_index in hotspot_writes:
             hotspot = np.asarray(nominal[step_index, size_index, pair_index], dtype=np.float32)
-            hotspot = hotspot.astype(dtype)
-            np.save(staging / rel, hotspot)
+            _write_array(staging / rel, hotspot)
         for name, columns, rows in csv_outputs:
             _write_csv(staging / name, columns, rows)
         for name, content in json_outputs.items():

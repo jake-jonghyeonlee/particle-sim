@@ -22,10 +22,15 @@ metadata, and each `sample_id_mapping` entry's raw tuple, sample ID, pair key an
 `layer_stack.csv` retains its legacy columns and physical layer aliases, which do not
 provide 1.2 source assignment. Consumers must support 1.2; keep old exports as legacy artifacts.
 
-Layouts share one uint8 NPY per electrode. Each hotspot plane is inspected during preflight
-and stored as uint8 if binary, otherwise float32. Capacity uses each actual storage dtype;
-only NPY headers, CSV quoting and filesystem allocation have conservative slack. Planes
-are read again during writing to bound memory use. No arrays are retained for the full run.
+Layouts share one file per electrode. Each layout and hotspot plane is inspected during
+preflight: binary arrays use lossless 8-bit grayscale PNG (0/255, zlib compression level 9),
+and nonbinary arrays retain float32 NPY. The adapter's L-mode float32 division by 255
+recovers exact binary 0/1 values; layout thresholding remains unchanged. Provenance records
+each array path's format and both encodings. Casefold collision checks use selected extensions.
+Capacity conservatively bounds PNG by uncompressed uint8 pixels plus row filter bytes,
+worst-case DEFLATE expansion and header/allocation slack; it never assumes compression
+savings. NPY uses float32 payload size plus slack; CSV quoting and metadata are included.
+Planes are read again during writing to bound memory use; no full-run arrays are retained.
 
 All validation and capacity checks precede writing. Outputs stage beneath the target parent
 and rename atomically, with cleanup on failure and a second overwrite guard. Final directories

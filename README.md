@@ -102,12 +102,12 @@ uv run particle-sim compare-sim \
 
 `export-simcompare`는 [particle-sim-compare](https://github.com/jake-jonghyeonlee/particle-sim-compare)의
 adapter 입력 형식(`bundles.csv`, `layouts.csv`, `hotspots.csv`, `ca_records.csv`,
-`layer_stack.csv`, `geometry.json`, `provenance.json`, `arrays/*.npy`)으로 내보낸다.
+`layer_stack.csv`, `geometry.json`, `provenance.json`, `arrays/*.png` / `arrays/*.npy`)으로 내보낸다.
 명목(`simulate-nominal`) 결과만 지원하며 확률 결과는 내보내지 않는다.
-Layout은 전극별 `arrays/layout-<sanitized electrode ID>.npy` 한 파일을 모든 step/sample에서 공유한다.
-이진 layout/hotspot은 uint8(0/1) NPY로 저장하고 비이진 hotspot은 float32를 보존하여 adapter에서
-기존 float32 값과 동일하게 읽힌다. `provenance.json`의 `array_storage`에 형식/dtype/중복 제거 정책을 기록한다.
-쓰기 전 각 hotspot plane의 실제 저장 dtype(uint8 또는 float32)으로 용량을 추정하고 헤더/CSV/파일시스템
+Layout은 전극별 `arrays/layout-<sanitized electrode ID>.png` 한 파일을 모든 step/sample에서 공유한다.
+이진 layout/hotspot은 8-bit grayscale PNG(0/255, lossless, zlib level 9)로 저장하고 비이진 배열은 float32 NPY를 보존하여 adapter에서
+기존 float32 값과 동일하게 읽힌다. `provenance.json`의 `array_storage`에 배열 경로별 형식/encoding/중복 제거 정책을 기록한다.
+쓰기 전 PNG는 압축 전 uint8 크기와 row filter/DEFLATE overhead, NPY는 float32 크기로 보수적으로 용량을 추정하고 헤더/CSV/파일시스템
 여유분을 더해 출력 부모의 여유 공간과 비교하며 부족하면
 아무 파일도 쓰지 않는다. 같은 부모의 임시 디렉터리에 완성한 뒤 출력 경로로 atomic rename하고,
 실패하면 임시 출력을 제거한다. 출력 디렉터리와 파일의 권한은 process umask를 따른다.

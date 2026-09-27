@@ -7,6 +7,7 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 import pytest
+from PIL import Image
 
 from particle_sim.cli import main
 from particle_sim.errors import InputContractError
@@ -53,15 +54,18 @@ def test_headers_and_counts(exported: tuple[Path, Path, Path]) -> None:
         assert len(rows) == count
 
 
-def test_arrays_are_2d_uint8(exported: tuple[Path, Path, Path]) -> None:
+def test_arrays_are_2d_binary_png(exported: tuple[Path, Path, Path]) -> None:
     _, _, out = exported
     for name in ("layouts.csv", "hotspots.csv"):
         _, rows = _rows(out / name)
         for row in rows[:6]:
-            arr = np.load(out / row["path"], allow_pickle=False)
+            assert row["path"].endswith(".png")
+            with Image.open(out / row["path"]) as image:
+                assert image.mode == "L"
+                arr = np.asarray(image)
             assert arr.dtype == np.uint8
             assert arr.shape == (200, 200)
-            assert set(np.unique(arr).tolist()) <= {0.0, 1.0}
+            assert set(np.unique(arr).tolist()) <= {0, 255}
 
 
 def test_ca_value_is_normalized_ca(exported: tuple[Path, Path, Path]) -> None:
@@ -197,7 +201,7 @@ def test_open_mapping_outputs(tmp_path, exported, mapping_contract, auto):
         assert b["electrode_b_role"] == row["electrode_b_role"]
         assert b["layer_b"] == row["layer_b"]
     for layout in layouts:
-        np.testing.assert_array_equal(np.load(out / layout["path"]), masks.electrodes["W"])
+        np.testing.assert_array_equal(_adapter_read(out / layout["path"], "layout"), masks.electrodes["W"])
     assert not list((out / "arrays").glob("*-b.npy"))
 
 
@@ -306,7 +310,7 @@ def test_contact_exclusion_and_original_plane(tmp_path, exported, mapping_contra
             raw = next(m["raw_tuple"] for m in mapping if m["sample_id"] == layout["sample_id"])
             unit = next(u for u in specs if u.unit_id == raw[3])
             electrode = unit.electrode_a if layout["slot"] == "a" else unit.electrode_b
-            np.testing.assert_array_equal(np.load(out / layout["path"]), masks.electrodes[electrode])
+            np.testing.assert_array_equal(_adapter_read(out / layout["path"], "layout"), masks.electrodes[electrode])
         for row in _rows(out / "hotspots.csv")[1]:
             mapping = next(m for m in json.loads((out / "provenance.json").read_text())
                            ["sample_id_mapping"] if m["sample_id"] == row["sample_id"])
@@ -315,7 +319,7 @@ def test_contact_exclusion_and_original_plane(tmp_path, exported, mapping_contra
             si = [s["step_id"] for s in yaml.safe_load(manifest.read_text())
                   ["particle_source_steps"]].index(mapping["raw_tuple"][2])
             expected[ui, :si + ui + [2., 4.].index(float(row["particle_size"])) + 1] = 1
-            np.testing.assert_array_equal(np.load(out / row["path"]), expected)
+            np.testing.assert_array_equal(_adapter_read(out / row["path"], "hotspot"), expected)
             ca_row = next(r for r in _rows(out / "ca_records.csv")[1]
                           if r["sample_id"] == row["sample_id"] and
                           r["particle_size"] == row["particle_size"])
@@ -505,7 +509,11 @@ def test_excluded_open_warning_conformance(tmp_path, exported, mapping_contract,
 
 
 def _adapter_read(path, kind):
-    arr = np.asarray(np.load(path, allow_pickle=False), dtype=np.float32)
+    if path.suffix == ".png":
+        with Image.open(path) as image:
+            arr = np.asarray(image.convert("L"), dtype=np.float32) / 255.0
+    else:
+        arr = np.asarray(np.load(path, allow_pickle=False), dtype=np.float32)
     return (arr > 0.5).astype(np.float32) if kind == "layout" else arr
 
 
@@ -530,7 +538,7 @@ def test_shared_layouts_and_exact_adapter_values(exported):
         np.testing.assert_array_equal(_adapter_read(out / row["path"], "layout"),
                                       masks.electrodes[electrode].astype(np.float32))
     assert all(len(set(values)) == 1 and len(values) > 1 for values in paths.values())
-    assert len(list((out / "arrays").glob("layout-*.npy"))) == len(paths)
+    assert len(list((out / "arrays").glob("layout-*.png"))) == len(paths)
     store = zarr.open_group(run / "hotspots.zarr", mode="r")
     for row in _rows(out / "hotspots.csv")[1]:
         raw = mapping[row["sample_id"]]
@@ -540,11 +548,14 @@ def test_shared_layouts_and_exact_adapter_values(exported):
         np.testing.assert_array_equal(_adapter_read(out / row["path"], "hotspot"),
                                       np.asarray(store["nominal_failure"][si, di, ui],
                                                  dtype=np.float32))
-    assert provenance["array_storage"]["format"] == "npy"
-    assert provenance["array_storage"]["layout_dtype"] == "uint8"
+    assert provenance["array_storage"]["format"] == "per-array"
+    formats = provenance["array_storage"]["formats"]
+    assert set(formats.values()) == {"png"}
+    assert set(formats) == {str(p.relative_to(out)) for p in (out / "arrays").iterdir()}
 
 
-def test_nonbinary_hotspot_preserved(tmp_path, exported):
+@pytest.mark.parametrize("value", [0.125, np.nextafter(1.0, 2.0)])
+def test_nonbinary_hotspot_preserved(tmp_path, exported, value):
     import shutil
 
     import zarr
@@ -552,14 +563,20 @@ def test_nonbinary_hotspot_preserved(tmp_path, exported):
     manifest, run, _ = exported
     shutil.copytree(run, tmp_path / "run")
     store = zarr.open_group(tmp_path / "run/hotspots.zarr", mode="a")
-    data = np.asarray(store["nominal_failure"][:], dtype=np.float32)
-    data[0, 0, 0, 0, 0] = 0.125
+    data = np.asarray(store["nominal_failure"][:], dtype=np.float64)
+    data[0, 0, 0, 0, 0] = value
     del store["nominal_failure"]
     store.create_array("nominal_failure", data=data)
     out = export_simcompare(tmp_path / "run", manifest, tmp_path / "out")
     row = _rows(out / "hotspots.csv")[1][0]
+    assert row["path"].endswith(".npy")
     assert np.load(out / row["path"]).dtype == np.float32
-    np.testing.assert_array_equal(_adapter_read(out / row["path"], "hotspot"), data[0, 0, 0])
+    formats = json.loads((out / "provenance.json").read_text())["array_storage"]["formats"]
+    assert formats[row["path"]] == "npy"
+    assert list(formats.values()).count("npy") == 1
+    assert "png" in formats.values()
+    np.testing.assert_array_equal(_adapter_read(out / row["path"], "hotspot"),
+                                  data[0, 0, 0].astype(np.float32))
 
 
 def test_capacity_preflight_writes_nothing(tmp_path, exported, monkeypatch):
@@ -574,7 +591,9 @@ def test_capacity_preflight_writes_nothing(tmp_path, exported, monkeypatch):
 
 @pytest.mark.parametrize("existing_empty", [False, True])
 def test_atomic_cleanup_on_midway_failure(tmp_path, exported, monkeypatch, existing_empty):
-    original = np.save
+    from particle_sim.export.simcompare import _write_array
+
+    original = _write_array
     count = 0
 
     def fail_midway(*args, **kwargs):
@@ -587,13 +606,13 @@ def test_atomic_cleanup_on_midway_failure(tmp_path, exported, monkeypatch, exist
     out = tmp_path / "out"
     if existing_empty:
         out.mkdir()
-    monkeypatch.setattr("particle_sim.export.simcompare.np.save", fail_midway)
+    monkeypatch.setattr("particle_sim.export.simcompare._write_array", fail_midway)
     with pytest.raises(OSError, match="injected write failure"):
         export_simcompare(exported[1], exported[0], out)
     assert list(tmp_path.iterdir()) == ([out] if existing_empty else [])
     if existing_empty:
         assert list(out.iterdir()) == []
-    monkeypatch.setattr("particle_sim.export.simcompare.np.save", original)
+    monkeypatch.setattr("particle_sim.export.simcompare._write_array", original)
     export_simcompare(exported[1], exported[0], out)
     assert (out / "bundles.csv").exists()
 
@@ -704,7 +723,11 @@ def test_capacity_estimate_matches_storage(tmp_path, exported, monkeypatch):
                         lambda path: SimpleNamespace(free=10**10))
     out = export_simcompare(exported[1], exported[0], tmp_path / "out")
     actual = sum(p.stat().st_size for p in out.rglob("*") if p.is_file())
-    assert actual <= estimates[0] < actual * 1.2
+    assert actual <= estimates[0]
+    # PNG capacity must not rely on compression, even for sparse planes.
+    array_count = len(list((out / "arrays").iterdir()))
+    assert estimates[0] >= array_count * 200 * 200
+    assert actual < array_count * 200 * 200
 
 
 @pytest.mark.parametrize("auto", [False, True])
