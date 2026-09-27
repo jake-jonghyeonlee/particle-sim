@@ -21,6 +21,7 @@ from particle_sim.export.simcompare import (
 )
 from particle_sim.failure.auto_open import INSUFFICIENT_TERMINALS
 from particle_sim.failure.open_failure import BASELINE_OPEN, TERMINAL_LOST
+from particle_sim.io.outputs import PROBABILITY_SEMANTICS
 from particle_sim.pipeline import run_nominal
 from particle_sim.validation.synthetic_cases import build_case, write_case
 
@@ -68,16 +69,19 @@ def test_arrays_are_2d_binary_png(exported: tuple[Path, Path, Path]) -> None:
             assert set(np.unique(arr).tolist()) <= {0, 255}
 
 
-def test_ca_value_is_normalized_ca(exported: tuple[Path, Path, Path]) -> None:
+def test_ca_value_is_raw_area_ca(exported: tuple[Path, Path, Path]) -> None:
     _, run_dir, out = exported
     ca = pd.read_parquet(run_dir / "ca.parquet")
     _, rows = _rows(out / "ca_records.csv")
     row = next(r for r in rows if r["sample_id"].endswith("S_M1-A__B")
                and float(r["particle_size"]) == 10.0)
     expected = ca[(ca.source_step == "S_M1") & (ca.pair_id == "A__B")
-                  & (ca.particle_size_um == 10.0)]["ca_nominal_normalized"].iloc[0]
+                  & (ca.particle_size_um == 10.0)]["ca_nominal_um2"].iloc[0]
     assert float(row["ca_value"]) == pytest.approx(expected)
-    assert row["ca_unit"] == "1"
+    assert row["ca_unit"] == "um^2"
+    settings = json.loads((out / "provenance.json").read_text())["calc_settings"]
+    assert settings["ca_mode"] == "nominal"
+    assert settings["ca_source"] == "ca_nominal_um2"
 
 
 def test_all_bundles_use_source_fab_layer(exported):
@@ -166,6 +170,7 @@ def _generated_run(manifest_path: Path, run_dir: Path, template: Path,
                              "failure_mode": unit.failure_mode, "particle_size_um": size,
                              "classification": "confirmed" if applicable else
                              "not_applicable_source_step",
+                             "ca_nominal_um2": float(data[si, di, ui].sum()) * masks.grid.pixel_size_x_um ** 2,
                              "ca_nominal_normalized": float(data[si, di, ui].mean())})
     store.create_array("nominal_failure", data=data)
     pd.DataFrame(rows).to_parquet(run_dir / "ca.parquet", index=False)
@@ -231,7 +236,7 @@ def test_conformance_id_vectors(tmp_path, exported, mapping_contract, vector_ind
     assert mapping["assigned_process_layer"] == bundle["assigned_process_layer"]
     for row in _rows(out / "ca_records.csv")[1]:
         size_index = [2.0, 4.0].index(float(row["particle_size"]))
-        assert float(row["ca_value"]) == pytest.approx((size_index + 1) / 40000)
+        assert float(row["ca_value"]) == pytest.approx((size_index + 1) * 0.25)
 
 
 @pytest.mark.parametrize("vector_index", range(3))
@@ -323,7 +328,7 @@ def test_contact_exclusion_and_original_plane(tmp_path, exported, mapping_contra
             ca_row = next(r for r in _rows(out / "ca_records.csv")[1]
                           if r["sample_id"] == row["sample_id"] and
                           r["particle_size"] == row["particle_size"])
-            assert float(ca_row["ca_value"]) == pytest.approx(expected.mean())
+            assert float(ca_row["ca_value"]) == pytest.approx(expected.sum() * masks.grid.pixel_size_x_um ** 2)
 
 
 @pytest.mark.parametrize("defect", ["unknown", "aliases", "kind", "mode", "mixed", "nan"])
@@ -343,7 +348,7 @@ def test_controlled_preflight_errors(tmp_path, exported, defect):
         store.attrs["pair_modes"] = ["vertical_short"]
     else:
         ca = pd.read_parquet(tmp_path / "run/ca.parquet")
-        ca.loc[0, "classification" if defect == "mixed" else "ca_nominal_normalized"] = (
+        ca.loc[0, "classification" if defect == "mixed" else "ca_nominal_um2"] = (
             "not_applicable_source_step" if defect == "mixed" else float("nan"))
         ca.to_parquet(tmp_path / "run/ca.parquet", index=False)
     with pytest.raises(InputContractError) as error:
@@ -493,6 +498,7 @@ def test_excluded_open_warning_conformance(tmp_path, exported, mapping_contract,
     applicable = ca.classification == "confirmed"
     ca.loc[applicable, "classification"] = classification
     ca.loc[applicable, "ca_nominal_normalized"] = 0.0
+    ca.loc[applicable, "ca_nominal_um2"] = 0.0
     ca.to_parquet(ca_path, index=False)
     out = export_simcompare(tmp_path / "run", manifest, tmp_path / "out")
     warnings = json.loads((out / "export_warnings.json").read_text())
@@ -750,3 +756,42 @@ def test_open_source_key_repeated_steps(tmp_path, exported, auto):
     assert len({b["fab_pair_key"] for b in bundles}) == 1
     assert bundles[0]["fab_pair_key"] == f"{specs[0].unit_id}:M2-N/A"
     assert len({b["assigned_process_layer"] for b in bundles}) == len(bundles)
+
+
+def test_mean_ca_exports_raw_area(exported, tmp_path):
+    import shutil
+
+    manifest, template, _ = exported
+    run_dir = tmp_path / "run"
+    shutil.copytree(template, run_dir)
+    run_manifest_path = run_dir / "run_manifest.json"
+    run_manifest = json.loads(run_manifest_path.read_text())
+    run_manifest["value_semantics"] = PROBABILITY_SEMANTICS
+    run_manifest_path.write_text(json.dumps(run_manifest))
+    path = run_dir / "ca.parquet"
+    ca = pd.read_parquet(path)
+    ca["ca_mean_um2"] = ca["ca_nominal_um2"] * 0.5
+    ca.to_parquet(path, index=False)
+    out = export_simcompare(run_dir, manifest, tmp_path / "mean", ca_mode="mean")
+    _, rows = _rows(out / "ca_records.csv")
+    nominal_rows = _rows(exported[2] / "ca_records.csv")[1]
+    assert len(rows) == len(nominal_rows)
+    for row, nominal in zip(rows, nominal_rows, strict=True):
+        assert row["ca_unit"] == "um^2"
+        assert float(row["ca_value"]) == pytest.approx(float(nominal["ca_value"]) * 0.5)
+    settings = json.loads((out / "provenance.json").read_text())["calc_settings"]
+    assert settings["ca_mode"] == "mean"
+    assert settings["ca_source"] == "ca_mean_um2"
+    assert settings["hotspot_semantics"] == "nominal binary geometric contact risk"
+    for row, nominal in zip(_rows(out / "hotspots.csv")[1],
+                            _rows(exported[2] / "hotspots.csv")[1], strict=True):
+        assert (out / row["path"]).read_bytes() == (exported[2] / nominal["path"]).read_bytes()
+
+
+def test_nominal_run_rejects_mean_ca_before_writing(exported, tmp_path):
+    manifest, run_dir, _ = exported
+    out = tmp_path / "mean"
+    with pytest.raises(InputContractError, match="requires a probability run"):
+        export_simcompare(run_dir, manifest, out, ca_mode="mean")
+    assert not out.exists()
+    assert list(tmp_path.iterdir()) == []

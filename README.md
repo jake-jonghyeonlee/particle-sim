@@ -150,3 +150,5 @@ pair-specific 자료는 identity 범위를 확인한 explicit distribution ID로
 - 수렴 허용 오차는 코드에 고정하지 않는다. `convergence.csv`를 보고 사람이 정한다.
 - Fab 분포는 geometry 계산이 끝난 뒤에만 적용한다. 크기 bin 정의·단위·조사 면적이 불명확하면
   가중 계산을 중단한다.
+
+CA export는 원 `ca_nominal_um2`를 `ca_value`, `um^2`를 `ca_unit`에 기록합니다. Python API의 `export_simcompare(..., ca_mode="mean")`은 확률 run에서만 허용되며 원 `ca_mean_um2`를 사용합니다(nominal run은 쓰기 전에 오류). `provenance.json`의 `calc_settings.ca_mode`와 `calc_settings.ca_source`에 선택 모드와 원 CA 열을 기록합니다. 평균 CA를 선택해도 hotspot 배열은 nominal binary footprint를 유지합니다. 단, 현재 `simulate-probability` 출력 디렉터리에는 `hotspots.zarr`가 없어 mean 모드 export는 실행 결과를 읽을 수 없다는 오류로 끝납니다. 확률 run의 평균 CA는 particle-sim-compare 검증 스크립트의 `--ca mean`(run 디렉터리 직접 검사)으로 확인합니다. ROI 폭·높이를 유지하여 simcompare가 면적으로 한 번만 나누며 결과 단위는 `1`입니다. 도메인 해석은 담당자 확인 필요입니다.

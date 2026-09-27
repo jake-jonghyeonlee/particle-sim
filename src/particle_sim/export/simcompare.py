@@ -18,7 +18,7 @@ from particle_sim.errors import InputContractError
 from particle_sim.failure.auto_open import INSUFFICIENT_TERMINALS
 from particle_sim.failure.open_failure import BASELINE_OPEN, TERMINAL_LOST
 from particle_sim.io.masks import load_product_masks
-from particle_sim.io.outputs import check_run_manifest, open_hotspot_store
+from particle_sim.io.outputs import PROBABILITY_SEMANTICS, check_run_manifest, open_hotspot_store
 from particle_sim.io.stack import build_stack_z
 from particle_sim.units import NOT_APPLICABLE_STEP, unit_specs
 
@@ -85,8 +85,12 @@ def _fab_pair_key(raw_unit: str, layer_a: str, layer_b: str,
     return key
 
 
-def export_simcompare(run_dir: Path, manifest_path: Path, out_dir: Path) -> Path:
+def export_simcompare(run_dir: Path, manifest_path: Path, out_dir: Path, *,
+                      ca_mode: str = "nominal") -> Path:
     """Write simcompare bundles/layouts/hotspots/ca_records for every applicable supported (step, unit)."""
+    if ca_mode not in ("nominal", "mean"):
+        raise InputContractError("CA 모드는 nominal 또는 mean이어야 합니다", field="ca_mode")
+    ca_column = "ca_nominal_um2" if ca_mode == "nominal" else "ca_mean_um2"
     run_dir = Path(run_dir)
     manifest_path = Path(manifest_path)
     out_dir = Path(out_dir)
@@ -129,9 +133,16 @@ def export_simcompare(run_dir: Path, manifest_path: Path, out_dir: Path) -> Path
             file=str(run_manifest_path),
             field=missing[0],
         )
+    if ca_mode == "mean" and run_manifest.get("value_semantics") != PROBABILITY_SEMANTICS:
+        raise InputContractError(
+            "ca_mode='mean' requires a probability run",
+            product_id=product_id,
+            file=str(run_manifest_path),
+            field="ca_mode",
+        )
     ca_id = "failure_unit_id" if "failure_unit_id" in ca.columns else "pair_id"
     missing_columns = [c for c in ("source_step", ca_id, "particle_size_um",
-                                   "ca_nominal_normalized") if c not in ca.columns]
+                                   ca_column) if c not in ca.columns]
     if missing_columns:
         raise InputContractError(
             f"ca.parquet에 필수 열이 없습니다: {missing_columns}",
@@ -236,8 +247,8 @@ def export_simcompare(run_dir: Path, manifest_path: Path, out_dir: Path) -> Path
                 match = rows[np.isclose(rows["particle_size_um"].astype(float), size)]
                 if len(match) != 1:
                     contract(f"ca.parquet에서 ({step_id}, {pair_id}, {size:g} um) 행이 "
-                             f"{len(match)}개입니다", "ca_nominal_normalized")
-                values.append(float(match["ca_nominal_normalized"].iloc[0]))
+                             f"{len(match)}개입니다", ca_column)
+                values.append(float(match[ca_column].iloc[0]))
                 if "classification" in match:
                     classifications.append(match["classification"].iloc[0])
             if len(set(classifications)) > 1:
@@ -250,7 +261,7 @@ def export_simcompare(run_dir: Path, manifest_path: Path, out_dir: Path) -> Path
             if skipped:
                 continue
             if not all(np.isfinite(values)):
-                contract(f"({step_id}, {pair_id}): ca_value must be finite", "ca_nominal_normalized")
+                contract(f"({step_id}, {pair_id}): ca_value must be finite", ca_column)
             layer_a = electrodes[pair.electrode_a].layer_name
             layer_b = ("N/A" if pair.failure_mode == "lateral_open" else
                        electrodes[pair.electrode_b].layer_name)
@@ -370,7 +381,7 @@ def export_simcompare(run_dir: Path, manifest_path: Path, out_dir: Path) -> Path
                     "particle_size": size,
                     "particle_size_unit": "um",
                     "ca_value": values[size_index],
-                    "ca_unit": "1",
+                    "ca_unit": "um^2",
                 }
             )
         geometry[sample_id] = {
@@ -398,6 +409,8 @@ def export_simcompare(run_dir: Path, manifest_path: Path, out_dir: Path) -> Path
             "legacy_kernel": run_manifest["legacy_kernel"],
             "post_step_policy": run_manifest["post_step_policy"],
             "hotspot_semantics": "nominal binary geometric contact risk",
+            "ca_mode": ca_mode,
+            "ca_source": ca_column,
         },
         "calc_version": calc_version,
         "is_synthetic": manifest.is_synthetic,

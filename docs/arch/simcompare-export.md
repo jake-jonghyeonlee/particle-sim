@@ -5,6 +5,17 @@ The nominal exporter writes mapping contract 1.2, one bundle per applicable supp
 explicit/automatic lateral opens. CNO is excluded with warnings; excluded baseline opens
 remain exported with their classification warning. Simulation and CA values are unchanged.
 
+CA exports retain raw area in `um^2`: `ca_nominal_um2` by default, or `ca_mean_um2`
+via the Python API's `ca_mode="mean"`. Mean mode requires a probability run, identified
+by the run manifest's `value_semantics = PROBABILITY_SEMANTICS` as written by
+`run_probability`; nominal runs are rejected before writing. Provenance `calc_settings`
+records `ca_mode` and `ca_source` (the selected raw CA column). Hotspot arrays always
+remain the nominal binary footprint, including when CA is the probability mean.
+Limitation: `simulate-probability` output directories contain `probability.zarr` but no
+`hotspots.zarr`, so mean-mode export currently stops with a controlled "cannot read run"
+error on pipeline probability runs; inspect probability-run mean CA with
+particle-sim-compare's run checker (`--ca mean`) instead.
+
 `bundles.csv` carries `assigned_process_layer = step.fab_distribution_layer` for every type,
 including vertical shorts. Preflight rejects blank source labels and, when CA carries
 `fab_distribution_layer`, any label that differs from the manifest or is not uniform within
