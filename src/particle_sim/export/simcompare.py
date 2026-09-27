@@ -24,7 +24,7 @@ from particle_sim.units import NOT_APPLICABLE_STEP, unit_specs
 BUNDLE_COLUMNS = (
     "sample_id", "product_id", "product_family", "design_version", "design_lineage_id",
     "electrode_a_role", "electrode_b_role", "layer_a", "layer_b", "failure_type", "fab_id",
-    "fab_distribution_id", "assigned_process_layer", "unit_width", "unit_height",
+    "fab_distribution_id", "assigned_process_layer", "fab_pair_key", "unit_width", "unit_height",
     "physical_length_unit", "parent_design_id", "change_description", "calc_version",
 )
 LAYOUT_COLUMNS = ("sample_id", "slot", "path", "pixel_size", "origin_x", "origin_y")
@@ -49,6 +49,21 @@ def _write_csv(path: Path, columns: tuple[str, ...], rows: list[dict]) -> None:
         writer.writeheader()
         for row in rows:
             writer.writerow({key: "" if row[key] is None else str(row[key]) for key in columns})
+
+
+def _fab_pair_key(raw_unit: str, layer_a: str, layer_b: str,
+                  registry: dict[str, tuple[str, str, str]]) -> str:
+    raw = (raw_unit, layer_a, layer_b)
+    if any(not isinstance(c, str) or not c or c != c.strip() for c in raw):
+        raise InputContractError("fab_pair_key components must be nonblank without edged whitespace",
+                                 field="fab_pair_key")
+    key = f"{raw_unit}:{layer_a}-{layer_b}"
+    previous = registry.get(key)
+    if previous is not None and previous != raw:
+        raise InputContractError(f"fab_pair_key collision {key!r}: {previous!r} and {raw!r}",
+                                 field="fab_pair_key")
+    registry[key] = raw
+    return key
 
 
 def export_simcompare(run_dir: Path, manifest_path: Path, out_dir: Path) -> Path:
@@ -161,6 +176,7 @@ def export_simcompare(run_dir: Path, manifest_path: Path, out_dir: Path) -> Path
     samples = []
     identities: dict[str, tuple[str, str, str, str]] = {}
     sample_id_mapping = []
+    pair_keys: dict[str, tuple[str, str, str]] = {}
     array_paths: dict[str, tuple[str, str]] = {}
     layout_paths: dict[str, str] = {}
     for unit_id in pair_ids:
@@ -176,6 +192,14 @@ def export_simcompare(run_dir: Path, manifest_path: Path, out_dir: Path) -> Path
     for step_index, step_id in enumerate(step_ids):
         if step_id not in steps:
             contract(f"알 수 없는 source step: {step_id!r}", "source_steps")
+        assigned = steps[step_id].fab_distribution_layer
+        if not isinstance(assigned, str) or not assigned.strip():
+            contract(f"{step_id!r}: source Fab layer must be nonblank", "fab_distribution_layer")
+        if "fab_distribution_layer" in ca:
+            labels = ca.loc[ca.source_step == step_id, "fab_distribution_layer"]
+            if labels.empty or not labels.eq(assigned).all():
+                contract(f"{step_id!r}: ca.parquet fab_distribution_layer must be uniform "
+                         "and equal the manifest source Fab layer", "fab_distribution_layer")
         for pair_index, pair_id in enumerate(pair_ids):
             pair = specs[pair_id]
             if pair.unit_kind == "contact":
@@ -206,6 +230,10 @@ def export_simcompare(run_dir: Path, manifest_path: Path, out_dir: Path) -> Path
                 continue
             if not all(np.isfinite(values)):
                 contract(f"({step_id}, {pair_id}): ca_value must be finite", "ca_nominal_normalized")
+            layer_a = electrodes[pair.electrode_a].layer_name
+            layer_b = ("N/A" if pair.failure_mode == "lateral_open" else
+                       electrodes[pair.electrode_b].layer_name)
+            key = _fab_pair_key(pair_id, layer_a, layer_b, pair_keys)
             raw_tuple = (product_id, manifest.design_version, step_id, pair_id)
             sample_id = re.sub(r"[^A-Za-z0-9_.-]", "_", "-".join(raw_tuple))
             previous = identities.get(sample_id)
@@ -236,7 +264,8 @@ def export_simcompare(run_dir: Path, manifest_path: Path, out_dir: Path) -> Path
                     f"{pair_id!r}: step={step_id!r}, classification={classifications[0]}; "
                     "CA 0 reflects an excluded baseline condition, not low risk"
                 )
-            sample_id_mapping.append({"raw_tuple": list(raw_tuple), "sample_id": sample_id})
+            sample_id_mapping.append({"raw_tuple": list(raw_tuple), "sample_id": sample_id,
+                                      "fab_pair_key": key, "assigned_process_layer": assigned})
             samples.append((step_index, step_id, pair_index, pair, sample_id, values))
 
     hotspot_writes = []
@@ -251,15 +280,7 @@ def export_simcompare(run_dir: Path, manifest_path: Path, out_dir: Path) -> Path
         step = steps[step_id]
         ea = electrodes[pair.electrode_a]
         eb = None if pair.failure_mode == "lateral_open" else electrodes[pair.electrode_b]
-        if pair.failure_mode == "vertical_short":
-            assigned = ""
-            warnings.append(
-                f"{sample_id}: simcompare는 vertical_short의 Fab layer를 상부 전극 layer로 "
-                f"강제하지만 simulator는 이물 발생 공정({step_id}) 기준이므로 "
-                "assigned_process_layer를 비워 두었습니다"
-            )
-        else:
-            assigned = step.fab_distribution_layer
+        assigned = step.fab_distribution_layer
         bundles.append(
             {
                 "sample_id": sample_id,
@@ -275,6 +296,8 @@ def export_simcompare(run_dir: Path, manifest_path: Path, out_dir: Path) -> Path
                 "fab_id": manifest.fab_id,
                 "fab_distribution_id": None,
                 "assigned_process_layer": assigned,
+                "fab_pair_key": _fab_pair_key(pair.unit_id, ea.layer_name,
+                                             eb.layer_name if eb else "N/A", pair_keys),
                 "unit_width": manifest.coordinate_system.roi_width_um,
                 "unit_height": manifest.coordinate_system.roi_height_um,
                 "physical_length_unit": "um",
@@ -338,6 +361,7 @@ def export_simcompare(run_dir: Path, manifest_path: Path, out_dir: Path) -> Path
         for layer in stack_z.values()
     ]
     provenance = {
+        "mapping_contract_version": "1.2",
         "calc_settings": {
             "run_id": run_manifest["run_id"],
             "config_hash": run_manifest["config_hash"],
@@ -371,11 +395,17 @@ def export_simcompare(run_dir: Path, manifest_path: Path, out_dir: Path) -> Path
         ("ca_records.csv", CA_RECORD_COLUMNS, ca_records),
         ("layer_stack.csv", LAYER_STACK_COLUMNS, layer_stack),
     )
-    # Upper bound: allow float32 for every hotspot, NPY headers, CSV quoting,
-    # and filesystem allocation overhead; no need to read all planes twice.
+    # Inspect each plane to size the actual binary uint8 / nonbinary float32 output.
+    # Headers, CSV quoting and filesystem allocation retain conservative slack.
+    hotspot_dtypes = []
+    for _, si, di, ui in hotspot_writes:
+        plane = np.asarray(nominal[si, di, ui], dtype=np.float32)
+        hotspot_dtypes.append(np.dtype(np.uint8 if np.all((plane == 0) | (plane == 1))
+                                       else np.float32))
     pixels = int(np.prod(grid.shape_yx))
     estimated_bytes = sum(pixels + 128 + 4096 for _ in layout_paths)
-    estimated_bytes += len(hotspot_writes) * (pixels * 4 + 128 + 4096)
+    estimated_bytes += sum(pixels * dtype.itemsize + 128 + 4096
+                           for dtype in hotspot_dtypes)
     estimated_bytes += sum(len(value.encode("utf-8")) + 4096
                            for value in json_outputs.values())
     for _, columns, rows in csv_outputs:
@@ -397,12 +427,14 @@ def export_simcompare(run_dir: Path, manifest_path: Path, out_dir: Path) -> Path
     staging = Path(tempfile.mkdtemp(prefix=f".{out_dir.name}-", dir=parent))
     try:
         (staging / "arrays").mkdir()
+        # mkdir applies the process umask without temporarily changing global state.
+        staging.chmod((staging / "arrays").stat().st_mode & 0o777)
         for electrode_id, rel in layout_paths.items():
             np.save(staging / rel, masks.electrodes[electrode_id].astype(np.uint8))
-        for rel, step_index, size_index, pair_index in hotspot_writes:
+        for (rel, step_index, size_index, pair_index), dtype in zip(
+                hotspot_writes, hotspot_dtypes, strict=True):
             hotspot = np.asarray(nominal[step_index, size_index, pair_index], dtype=np.float32)
-            if np.all((hotspot == 0) | (hotspot == 1)):
-                hotspot = hotspot.astype(np.uint8)
+            hotspot = hotspot.astype(dtype)
             np.save(staging / rel, hotspot)
         for name, columns, rows in csv_outputs:
             _write_csv(staging / name, columns, rows)

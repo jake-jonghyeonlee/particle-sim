@@ -107,9 +107,11 @@ adapter 입력 형식(`bundles.csv`, `layouts.csv`, `hotspots.csv`, `ca_records.
 Layout은 전극별 `arrays/layout-<sanitized electrode ID>.npy` 한 파일을 모든 step/sample에서 공유한다.
 이진 layout/hotspot은 uint8(0/1) NPY로 저장하고 비이진 hotspot은 float32를 보존하여 adapter에서
 기존 float32 값과 동일하게 읽힌다. `provenance.json`의 `array_storage`에 형식/dtype/중복 제거 정책을 기록한다.
-쓰기 전 float32 hotspot을 가정한 보수적 용량 추정치와 출력 부모의 여유 공간을 비교하며 부족하면
+쓰기 전 각 hotspot plane의 실제 저장 dtype(uint8 또는 float32)으로 용량을 추정하고 헤더/CSV/파일시스템
+여유분을 더해 출력 부모의 여유 공간과 비교하며 부족하면
 아무 파일도 쓰지 않는다. 같은 부모의 임시 디렉터리에 완성한 뒤 출력 경로로 atomic rename하고,
-실패하면 임시 출력을 제거한다. 비어 있지 않은 출력 경로는 계속 덮어쓰지 않는다.
+실패하면 임시 출력을 제거한다. 출력 디렉터리와 파일의 권한은 process umask를 따른다.
+비어 있지 않은 출력 경로는 계속 덮어쓰지 않는다.
 `electrode_pair`의 lateral/vertical short와 `open_path` / `open_electrode`의 lateral open을
 지원한다. Open은 b 전극 역할과 layer를 `N/A`로 기록하고 a layout만 생성한다.
 `contact` / `contact_not_open`은 제외하고 raw unit ID별 이유를 `export_warnings.json`에
@@ -121,7 +123,15 @@ CNO만 있는 실행도 header-only CSV로 성공하지만 분석 가능한 데�
 충돌하면 파일 생성 전에 입력 오류로 중단한다.
 원본 tuple과 ID 대응은 `provenance.json`의 `sample_id_mapping`에 기록한다.
 Fab 자료(`fab.json` / `fab_measurements.csv`)는 생성하지 않으며 `export_warnings.json`에 남는다.
-Vertical short의 `assigned_process_layer`는 비워 두고 경고를 보존한다.
+Contract 1.2: 모든 유형의 `assigned_process_layer`는 source step의 `fab_distribution_layer`다.
+CA에 해당 열이 있으면 step 내 모든 값이 manifest와 같아야 하며 공백/불일치는 쓰기 전에 거부한다.
+`fab_pair_key`는 raw unit ID와 순서대로 내보낸 layer를 그대로 이은 `<unit>:<layer_a>-<layer_b>`다.
+Open은 `<unit>:<layer_a>-N/A`이며 punctuation/Unicode를 보존한다. 공백/가장자리 whitespace와
+서로 다른 tuple이 같은 key를 만드는 경우는 거부하고, 같은 tuple의 step 간 key 반복은 허용한다.
+`provenance.json.mapping_contract_version`은 `1.2`이며 `sample_id_mapping`에도 key와 assignment를
+기록한다. `layer_stack.csv`는 legacy 소비자를 위해 기존 형식을 유지한다. 이 export는 1.2 소비자가
+필요하며 기존 1.1 export는 별도로 보존한다. Pair ID는 product-local이다. Layer-wide Fab가 기본이며
+pair-specific 자료는 identity 범위를 확인한 explicit distribution ID로 사용한다.
 
 `validate-input`과 `run_manifest.json`은 flat 표면에서 접촉 여유와 매립 깊이가 모두 0이면
 접촉이 불가능한 short pair 수를 step별 `STRUCTURAL_ZERO_SHORT` 경고로 기록한다.

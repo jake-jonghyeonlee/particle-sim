@@ -76,19 +76,28 @@ def test_ca_value_is_normalized_ca(exported: tuple[Path, Path, Path]) -> None:
     assert row["ca_unit"] == "1"
 
 
-def test_vertical_bundles_leave_fab_layer_empty(exported: tuple[Path, Path, Path]) -> None:
-    _, _, out = exported
-    _, bundles = _rows(out / "bundles.csv")
-    warnings = json.loads((out / "export_warnings.json").read_text(encoding="utf-8"))
+def test_all_bundles_use_source_fab_layer(exported):
+    from particle_sim.config import load_manifest
+
+    manifest, _, out = exported
+    steps = {s.step_id: s.fab_distribution_layer
+             for s in load_manifest(manifest).particle_source_steps}
+    provenance = json.loads((out / "provenance.json").read_text())
+    assert provenance["mapping_contract_version"] == "1.2"
+    mapping = {m["sample_id"]: m for m in provenance["sample_id_mapping"]}
+    different_vertical = False
+    for b in _rows(out / "bundles.csv")[1]:
+        m = mapping[b["sample_id"]]
+        assert b["assigned_process_layer"] == steps[m["raw_tuple"][2]]
+        assert b["fab_pair_key"] == f'{m["raw_tuple"][3]}:{b["layer_a"]}-{b["layer_b"]}'
+        assert m["fab_pair_key"] == b["fab_pair_key"]
+        assert m["assigned_process_layer"] == b["assigned_process_layer"]
+        different_vertical |= (b["failure_type"] == "vertical_short" and
+                               b["assigned_process_layer"] != "M2")
+    assert different_vertical
+    warnings = json.loads((out / "export_warnings.json").read_text())
     assert any("fab.json" in w for w in warnings)
-    for bundle in bundles:
-        if bundle["failure_type"] == "vertical_short":
-            assert bundle["assigned_process_layer"] == ""
-            assert any(bundle["sample_id"] in w for w in warnings)
-        else:
-            assert bundle["assigned_process_layer"] != ""
-    provenance = json.loads((out / "provenance.json").read_text(encoding="utf-8"))
-    assert provenance["is_synthetic"] is True
+    assert not any("assigned_process_layer" in w for w in warnings)
 
 
 def test_non_empty_output_rejected(exported: tuple[Path, Path, Path]) -> None:
@@ -211,7 +220,11 @@ def test_conformance_id_vectors(tmp_path, exported, mapping_contract, vector_ind
         assert {r["sample_id"] for r in _rows(out / name)[1]} == {sample_id}
     assert list(json.loads((out / "geometry.json").read_text())) == [sample_id]
     provenance = json.loads((out / "provenance.json").read_text())
-    assert provenance["sample_id_mapping"] == [vector]
+    mapping = provenance["sample_id_mapping"][0]
+    assert {k: mapping[k] for k in vector} == vector
+    bundle = _rows(out / "bundles.csv")[1][0]
+    assert mapping["fab_pair_key"] == bundle["fab_pair_key"]
+    assert mapping["assigned_process_layer"] == bundle["assigned_process_layer"]
     for row in _rows(out / "ca_records.csv")[1]:
         size_index = [2.0, 4.0].index(float(row["particle_size"]))
         assert float(row["ca_value"]) == pytest.approx((size_index + 1) / 40000)
@@ -377,8 +390,11 @@ def test_stack_content_and_slot_order(tmp_path, exported):
     warnings = json.loads((out / "export_warnings.json").read_text())
     for b in _rows(out / "bundles.csv")[1]:
         if b["failure_type"] == "vertical_short":
-            assert b["assigned_process_layer"] == ""
-            assert any(b["sample_id"] in w for w in warnings)
+            assert b["assigned_process_layer"]
+            assert not any(b["sample_id"] in w for w in warnings)
+            original = next(r for r in _rows(exported[2] / "bundles.csv")[1]
+                            if r["sample_id"] == b["sample_id"])
+            assert b["fab_pair_key"] != original["fab_pair_key"]
 
 
 def test_anisotropic_rejected_before_files(tmp_path, exported):
@@ -461,7 +477,7 @@ def test_casefold_array_collision_preflight(tmp_path, exported):
 @pytest.mark.parametrize("classification", [BASELINE_OPEN, TERMINAL_LOST, INSUFFICIENT_TERMINALS])
 def test_excluded_open_warning_conformance(tmp_path, exported, mapping_contract, auto,
                                           classification):
-    assert mapping_contract["contract_version"] == "1.1"
+    assert mapping_contract["contract_version"] == "1.2"
     policy = mapping_contract["excluded_open_warnings"]
     assert policy["classifications"] == sorted(
         [BASELINE_OPEN, TERMINAL_LOST, INSUFFICIENT_TERMINALS])
@@ -598,3 +614,116 @@ def test_layout_casefold_collision_preflight(tmp_path, exported):
     with pytest.raises(InputContractError, match="array path collision"):
         export_simcompare(tmp_path / "run", manifest, tmp_path / "out")
     assert not (tmp_path / "out").exists()
+
+
+@pytest.mark.parametrize("bad", ["", " ", None, "WRONG", "mixed"])
+def test_source_fab_label_preflight(tmp_path, exported, bad):
+    import shutil
+
+    shutil.copytree(exported[1], tmp_path / "run")
+    ca_path = tmp_path / "run/ca.parquet"
+    ca = pd.read_parquet(ca_path)
+    if bad == "mixed":
+        ca.loc[0, "fab_distribution_layer"] = "WRONG"
+    else:
+        ca["fab_distribution_layer"] = bad
+    ca.to_parquet(ca_path, index=False)
+    with pytest.raises(InputContractError, match="fab_distribution_layer"):
+        export_simcompare(tmp_path / "run", exported[0], tmp_path / "out")
+    assert not (tmp_path / "out").exists()
+
+
+def test_manifest_blank_source_preflight(tmp_path, exported):
+    import yaml
+
+    case = build_case("pilot")
+    manifest = write_case(case, tmp_path / "case")
+    _generated_run(manifest, tmp_path / "run", exported[1])
+    payload = yaml.safe_load(manifest.read_text())
+    payload["particle_source_steps"][0]["fab_distribution_layer"] = " "
+    manifest.write_text(yaml.safe_dump(payload))
+    with pytest.raises(InputContractError):
+        export_simcompare(tmp_path / "run", manifest, tmp_path / "out")
+    assert not (tmp_path / "out").exists()
+
+
+def test_pair_key_contract_vectors(mapping_contract):
+    from particle_sim.export.simcompare import _fab_pair_key
+
+    registry = {}
+    for vector in mapping_contract["fab_pair_key"]["vectors"]:
+        assert _fab_pair_key(*vector["raw_tuple"], registry) == vector["key"]
+    repeated = mapping_contract["fab_pair_key"]["same_key_multiple_steps"]
+    for _ in repeated["steps"]:
+        assert _fab_pair_key(*repeated["raw_tuple"], registry) == repeated["key"]
+    for tuples in mapping_contract["fab_pair_key"]["collision_vectors"]:
+        registry = {}
+        _fab_pair_key(*tuples[0], registry)
+        with pytest.raises(InputContractError, match="collision"):
+            _fab_pair_key(*tuples[1], registry)
+    for component in ("", " ", " edge", "edge\t"):
+        for slot in range(3):
+            raw = ["U", "A", "B"]
+            raw[slot] = component
+            with pytest.raises(InputContractError, match="components"):
+                _fab_pair_key(*raw, {})
+
+
+@pytest.mark.parametrize("mask", [0o022, 0o027, 0o077])
+@pytest.mark.parametrize("existing", [False, True])
+def test_export_permissions_honor_umask(tmp_path, exported, mask, existing):
+    import os
+    import stat
+
+    out = tmp_path / "out"
+    if existing:
+        out.mkdir(mode=0o700)
+    old = os.umask(mask)
+    try:
+        export_simcompare(exported[1], exported[0], out)
+    finally:
+        os.umask(old)
+    for path in [out, *out.rglob("*")]:
+        expected = (0o777 if path.is_dir() else 0o666) & ~mask
+        assert stat.S_IMODE(path.stat().st_mode) == expected
+
+
+def test_capacity_estimate_matches_storage(tmp_path, exported, monkeypatch):
+    from types import SimpleNamespace
+
+    estimates = []
+    def disk_usage(path):
+        return SimpleNamespace(free=1)
+    monkeypatch.setattr("particle_sim.export.simcompare.shutil.disk_usage", disk_usage)
+    with pytest.raises(InputContractError, match="estimated") as error:
+        export_simcompare(exported[1], exported[0], tmp_path / "out")
+    import re
+
+    estimates.append(int(re.search(r"estimated (\d+) bytes", str(error.value)).group(1)))
+    monkeypatch.setattr("particle_sim.export.simcompare.shutil.disk_usage",
+                        lambda path: SimpleNamespace(free=10**10))
+    out = export_simcompare(exported[1], exported[0], tmp_path / "out")
+    actual = sum(p.stat().st_size for p in out.rglob("*") if p.is_file())
+    assert actual <= estimates[0] < actual * 1.2
+
+
+@pytest.mark.parametrize("auto", [False, True])
+def test_open_source_key_repeated_steps(tmp_path, exported, auto):
+    import yaml
+
+    manifest = _open_manifest(tmp_path, auto=auto, unit_id="W:path/한글")
+    payload = yaml.safe_load(manifest.read_text())
+    if auto:
+        payload["open_applicable_steps_by_layer"] = {
+            "M2": [s["step_id"] for s in payload["particle_source_steps"]]}
+    for i, step in enumerate(payload["particle_source_steps"]):
+        step["fab_distribution_layer"] = f"SOURCE_{i}"
+    manifest.write_text(yaml.safe_dump(payload))
+    specs, _ = _generated_run(manifest, tmp_path / "run", exported[1])
+    out = export_simcompare(tmp_path / "run", manifest, tmp_path / "out")
+    bundles = _rows(out / "bundles.csv")[1]
+    assert len(bundles) > 1
+    assert len({b["sample_id"] for b in bundles}) == len(bundles)
+    assert len({b["fab_pair_key"] for b in bundles}) == 1
+    assert bundles[0]["fab_pair_key"] == f"{specs[0].unit_id}:M2-N/A"
+    assert len({b["assigned_process_layer"] for b in bundles}) == len(bundles)
