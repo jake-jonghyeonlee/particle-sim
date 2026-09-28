@@ -5,7 +5,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 import numpy as np
-from scipy.ndimage import binary_dilation, label
+from scipy.ndimage import binary_dilation, distance_transform_edt, label
+from scipy.spatial import cKDTree
 
 from particle_sim.errors import InputContractError
 from particle_sim.failure.open_fast import LocalConnectivity
@@ -241,6 +242,67 @@ def open_candidates(
     filter was tried first and was dropped because it loses centres on corners and junctions,
     where `skeletonize` deletes pixels that still carry the connection.
     """
+    reach_um = radius_um + contact_margin_um
+    if reach_um <= 0:
+        return np.zeros(electrode_mask.shape, dtype=bool)
+    if not np.isfinite(reach_um):
+        _reach_footprint(grid, reach_um)
+    seeds = np.asarray(electrode_mask, dtype=bool).copy()
+    for terminal in terminals:
+        seeds[terminal] = True
+    if not seeds.any():
+        return np.zeros(electrode_mask.shape, dtype=bool)
+
+    nearest_y, nearest_x = distance_transform_edt(
+        ~seeds,
+        sampling=(grid.pixel_size_y_um, grid.pixel_size_x_um),
+        return_distances=False,
+        return_indices=True,
+    )
+    yy, xx = np.ogrid[: seeds.shape[0], : seeds.shape[1]]
+    distance = np.hypot(
+        (nearest_y - yy) * grid.pixel_size_y_um,
+        (nearest_x - xx) * grid.pixel_size_x_um,
+    )
+    candidates = distance <= reach_um
+
+    # The EDT chooses one of equally near seeds using squared distances. At the
+    # boundary, another seed can round differently under the footprint's hypot.
+    # Check only unresolved centres against nearby seeds with that exact predicate.
+    tolerance = 32 * np.finfo(float).eps * max(
+        1.0,
+        abs(reach_um),
+        seeds.shape[0] * grid.pixel_size_y_um,
+        seeds.shape[1] * grid.pixel_size_x_um,
+    )
+    boundary = np.argwhere((~candidates) & (distance <= reach_um + tolerance))
+    if boundary.size:
+        seed_points = np.argwhere(seeds)
+        seed_um = seed_points * (grid.pixel_size_y_um, grid.pixel_size_x_um)
+        tree = cKDTree(seed_um)
+        for y, x in boundary:
+            nearby = tree.query_ball_point(
+                (y * grid.pixel_size_y_um, x * grid.pixel_size_x_um),
+                reach_um + tolerance,
+            )
+            offsets = seed_points[nearby] - (y, x)
+            candidates[y, x] = np.any(
+                np.hypot(
+                    offsets[:, 0] * grid.pixel_size_y_um,
+                    offsets[:, 1] * grid.pixel_size_x_um,
+                ) <= reach_um
+            )
+    return candidates
+
+
+def _open_candidates_reference(
+    electrode_mask: np.ndarray,
+    grid: GridSpec,
+    radius_um: float,
+    contact_margin_um: float,
+    terminals: tuple[tuple[int, int], ...] = (),
+) -> np.ndarray:
+    """Original dilation, retained for exact-equivalence tests only."""
     reach_um = radius_um + contact_margin_um
     if reach_um <= 0:
         return np.zeros(electrode_mask.shape, dtype=bool)
