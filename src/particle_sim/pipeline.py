@@ -118,6 +118,12 @@ class NominalRunResult:
     run_manifest: Path
 
 
+def _unpack_legacy_map(packed: np.ndarray, shape: tuple[int, int]) -> np.ndarray:
+    """Restore a cached legacy map, excluding padding bits in the final byte."""
+    height, width = shape
+    return np.unpackbits(packed, count=height * width).reshape(height, width).astype(bool)
+
+
 def _require_empty_output(output_dir: Path, product_id: str) -> None:
     if output_dir.exists() and (not output_dir.is_dir() or any(output_dir.iterdir())):
         raise InputContractError(
@@ -300,7 +306,7 @@ def run_nominal(
     open_cache: OpenResultCache = {}
     ca_rows: list[dict] = []
     union_rows: list[dict] = []
-    legacy_cache: dict[tuple[int, int], np.ndarray] = {}
+    legacy_cache: dict[tuple[int, int], tuple[np.ndarray, tuple[int, int]]] = {}
     comparison_rows: list[dict] = []
 
     for size_index, diameter in enumerate(sizes):
@@ -312,7 +318,7 @@ def run_nominal(
                 grid,
                 manifest.legacy_kernel,
             )
-            legacy_cache[(size_index, pair_index)] = legacy
+            legacy_cache[(size_index, pair_index)] = (np.packbits(legacy), legacy.shape)
             cmp = explain_legacy_vs_edt(
                 masks.electrodes[pair.electrode_a],
                 masks.electrodes[pair.electrode_b],
@@ -365,7 +371,12 @@ def run_nominal(
             nominal_ca: dict[str, float] = {}
             for pair_index, unit_id in enumerate(unit_id_list):
                 pair_result = by_id[unit_id]
-                legacy = legacy_cache.get((size_index, pair_index), empty_legacy)
+                packed_legacy = legacy_cache.get((size_index, pair_index))
+                legacy = (
+                    _unpack_legacy_map(*packed_legacy)
+                    if packed_legacy is not None
+                    else empty_legacy
+                )
                 spec = spec_by_id[unit_id]
                 store.write_pair(
                     step_index,
@@ -430,8 +441,9 @@ def run_nominal(
                 legacy_union = np.zeros(grid.shape_yx, dtype=bool)
                 for pair_id in union.pair_ids:
                     legacy_key = (size_index, pair_index_by_id[pair_id])
-                    if legacy_key in legacy_cache:
-                        legacy_union |= legacy_cache[legacy_key]
+                    packed_legacy = legacy_cache.get(legacy_key)
+                    if packed_legacy is not None:
+                        legacy_union |= _unpack_legacy_map(*packed_legacy)
                 ca_union = critical_area_um2(union.any_failure, grid)
                 union_rows.append(
                     {
