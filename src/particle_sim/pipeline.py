@@ -365,6 +365,7 @@ def run_nominal(
                 diameter,
                 cache,
                 open_cache,
+                shared_readonly_placeholders=True,
             )
             by_id = {r.pair_id: r for r in results}
             allocation = allocate_risk(results, grid)
@@ -482,6 +483,11 @@ def run_nominal(
             for unit_id, last_step_index in last_step_by_unit.items():
                 if step_index == last_step_index:
                     open_cache.pop((unit_id, float(diameter), contact_margin), None)
+
+            # The next evaluation must not inherit this cycle's uncached result graph.
+            # Multi-step open results remain owned by open_cache until their last step.
+            del results, by_id, pair_result, allocation, unions, union
+            del legacy, legacy_union
 
     write_table(ca_rows, CA_COLUMNS, result.ca_table)
     write_table(union_rows, UNION_CA_COLUMNS, result.union_table)
