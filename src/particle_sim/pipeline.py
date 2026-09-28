@@ -336,6 +336,19 @@ def run_nominal(
 
     pair_index_by_id = {unit_id: i for i, unit_id in enumerate(unit_id_list)}
     empty_legacy = np.zeros(grid.shape_yx, dtype=bool)
+    last_step_by_unit = {
+        spec.unit_id: max(
+            (
+                index
+                for index, step in enumerate(steps)
+                if spec.applicable_steps is None or step.step_id in spec.applicable_steps
+            ),
+            default=-1,
+        )
+        for spec in specs
+        if spec.unit_kind != KIND_PAIR
+    }
+    contact_margin = float(manifest.contact_margin_um)
     for step_index, step in enumerate(steps):
         for size_index, diameter in enumerate(sizes):
             results = evaluate_units(
@@ -450,6 +463,13 @@ def run_nominal(
                         "simulator_version": __version__,
                     }
                 )
+
+            # Results remain live in ``results`` through writes and unions. Once this
+            # step has consumed a unit's final applicable result at this diameter,
+            # its cache entry cannot be reused by the remaining step-major traversal.
+            for unit_id, last_step_index in last_step_by_unit.items():
+                if step_index == last_step_index:
+                    open_cache.pop((unit_id, float(diameter), contact_margin), None)
 
     write_table(ca_rows, CA_COLUMNS, result.ca_table)
     write_table(union_rows, UNION_CA_COLUMNS, result.union_table)
