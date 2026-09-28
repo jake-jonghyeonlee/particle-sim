@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 from dataclasses import dataclass
 
 import numpy as np
@@ -9,6 +10,7 @@ from scipy.ndimage import binary_dilation, distance_transform_edt, label
 from scipy.spatial import cKDTree
 
 from particle_sim.errors import InputContractError
+from particle_sim.failure.open_barrier import PreparedBarrier, prepare_barrier
 from particle_sim.failure.open_fast import LocalConnectivity
 from particle_sim.io.masks import GridSpec, MaskSet
 from particle_sim.schema import OpenPath, ProductManifest
@@ -312,6 +314,42 @@ def _open_candidates_reference(
     return binary_dilation(seeds, structure=_reach_footprint(grid, reach_um))
 
 
+def _evaluate_local_centres(
+    electrode_mask: np.ndarray,
+    terminal_a_region: np.ndarray,
+    terminal_b_region: np.ndarray,
+    candidates: np.ndarray,
+    failure: np.ndarray,
+    stamp: np.ndarray,
+) -> None:
+    """Apply the original tiled local judgement to selected candidate centres."""
+    half_y, half_x = stamp.shape[0] // 2, stamp.shape[1] // 2
+    height, width = electrode_mask.shape
+    crop_y0, crop_y1, crop_x0, crop_x1 = _mask_bounds(electrode_mask)
+    crop_y0 = max(crop_y0 - half_y, 0)
+    crop_y1 = min(crop_y1 + half_y, height)
+    crop_x0 = max(crop_x0 - half_x, 0)
+    crop_x1 = min(crop_x1 + half_x, width)
+    local = LocalConnectivity(
+        electrode_mask[crop_y0:crop_y1, crop_x0:crop_x1],
+        [
+            terminal_a_region[crop_y0:crop_y1, crop_x0:crop_x1],
+            terminal_b_region[crop_y0:crop_y1, crop_x0:crop_x1],
+        ],
+        half_y,
+        half_x,
+    )
+    ys, xs = np.nonzero(candidates)
+    centres = [
+        (int(y) - crop_y0, int(x) - crop_x0)
+        for y, x in zip(ys.tolist(), xs.tolist(), strict=True)
+    ]
+    order = sorted(range(len(centres)), key=lambda i: local.tile_key(*centres[i]))
+    for i in order:
+        cy, cx = centres[i]
+        failure[int(ys[i]), int(xs[i])] = local.splits((cy, cx), stamp)
+
+
 def simulate_open(
     manifest: ProductManifest,
     masks: MaskSet,
@@ -320,7 +358,12 @@ def simulate_open(
     *,
     contact_margin_um: float | None = None,
 ) -> OpenResult:
-    """Evaluate every candidate particle centre for one open path and particle size."""
+    """Evaluate explicit open with a certified barrier or the original local loop.
+
+    The backend is selected per call. Pipeline result caches are run-scoped and
+    can return a prior same-size result before this function runs; compare the
+    diagnostic backends in fresh processes/runs to measure each route.
+    """
     if open_path.electrode not in masks.electrodes:
         raise InputContractError(
             f"open_path '{open_path.path_id}'의 전극 '{open_path.electrode}'을(를) "
@@ -339,6 +382,12 @@ def simulate_open(
     )
     terminal_a = _first_point(terminal_a_region)
     terminal_b = _first_point(terminal_b_region)
+    backend = os.environ.get("PARTICLE_SIM_OPEN_BACKEND", "auto")
+    if backend not in ("auto", "local"):
+        raise ValueError(
+            "PARTICLE_SIM_OPEN_BACKEND must be 'auto' or 'local' "
+            f"(got {backend!r})"
+        )
 
     failure = np.zeros(electrode_mask.shape, dtype=bool)
     excluded = baseline_status(electrode_mask, terminal_a_region, terminal_b_region)
@@ -368,36 +417,36 @@ def simulate_open(
             terminal_kind=terminal_kind,
         )
 
-    stamp = particle_footprint(grid, radius_um, margin)
-    half_y, half_x = stamp.shape[0] // 2, stamp.shape[1] // 2
+    reach_um = radius_um + margin
     height, width = electrode_mask.shape
-    # Crop to the electrode, widened by the disc so every candidate centre still falls inside.
-    # Candidates are the electrode dilated by the reach, so this bound holds by construction.
-    crop_y0, crop_y1, crop_x0, crop_x1 = _mask_bounds(electrode_mask)
-    crop_y0 = max(crop_y0 - half_y, 0)
-    crop_y1 = min(crop_y1 + half_y, height)
-    crop_x0 = max(crop_x0 - half_x, 0)
-    crop_x1 = min(crop_x1 + half_x, width)
-    cropped_electrode = electrode_mask[crop_y0:crop_y1, crop_x0:crop_x1]
-    cropped_terminal_a = terminal_a_region[crop_y0:crop_y1, crop_x0:crop_x1]
-    cropped_terminal_b = terminal_b_region[crop_y0:crop_y1, crop_x0:crop_x1]
-    local = LocalConnectivity(
-        cropped_electrode,
-        [cropped_terminal_a, cropped_terminal_b],
-        half_y,
-        half_x,
+    # Extremely oversized stamps are outside the EDT repair envelope. Keep the
+    # reference stamp path (and its validation/resource behavior) for them.
+    bounded_stamp = (
+        reach_um <= 16 * height * grid.pixel_size_y_um
+        and reach_um <= 16 * width * grid.pixel_size_x_um
     )
-    ys, xs = np.nonzero(candidates)
-    centres = [
-        (int(y) - crop_y0, int(x) - crop_x0)
-        for y, x in zip(ys.tolist(), xs.tolist(), strict=True)
-    ]
-    # Walking tile by tile keeps each tile's outside labelling built once instead of on every
-    # row sweep, which otherwise evicts and rebuilds it across a wide electrode.
-    order = sorted(range(len(centres)), key=lambda i: local.tile_key(*centres[i]))
-    for i in order:
-        cy, cx = centres[i]
-        failure[int(ys[i]), int(xs[i])] = local.splits((cy, cx), stamp)
+    prepared = None
+    if backend == "auto" and bounded_stamp:
+        prepared = prepare_barrier(
+            electrode_mask,
+            terminal_a_region,
+            terminal_b_region,
+            grid.pixel_size_y_um,
+            grid.pixel_size_x_um,
+        )
+    if isinstance(prepared, PreparedBarrier):
+        failure[:] = candidates & (prepared.critical <= reach_um)
+        repair = candidates & prepared.ambiguous(reach_um)
+        if repair.any():
+            stamp = particle_footprint(grid, radius_um, margin)
+            _evaluate_local_centres(
+                electrode_mask, terminal_a_region, terminal_b_region, repair, failure, stamp
+            )
+    else:
+        stamp = particle_footprint(grid, radius_um, margin)
+        _evaluate_local_centres(
+            electrode_mask, terminal_a_region, terminal_b_region, candidates, failure, stamp
+        )
     return OpenResult(
         path_id=open_path.path_id,
         electrode=open_path.electrode,
