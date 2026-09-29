@@ -17,6 +17,12 @@ contact drops out because it is a CNO, and fragments without a terminal are igno
 `auto_open:<electrode>` for layers listed in `open_applicable_steps_by_layer`; electrodes with an explicit
 `open_path` keep that path. Fewer than two connected terminals gives `insufficient_terminals`.
 
+Automatic open uses exact 9×9 candidate-block certificates from the union and intersection of the
+actual particle footprint; ambiguous blocks use the original per-centre local judgement. Set
+`PARTICLE_SIM_OPEN_BACKEND=local` to bypass block preparation and use the per-centre route for
+automatic open. The default and `auto` setting use certificates; this setting also controls the
+existing explicit-open backend route.
+
 `failure/contact_not_open.py` evaluates CNO per contact link `cno:<contact>:<lower>__<upper>`. The
 provisional rule (`full_cover_any_hole`) fails a hole when the particle disc covers every effective contact
 pixel (hole ∩ lower ∩ upper electrode) and fails the link when any hole fails. A link that disappears in a

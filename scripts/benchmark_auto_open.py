@@ -170,6 +170,18 @@ def run(args: argparse.Namespace) -> None:
                     or frozen["input_hashes"] != inputs):
                 raise RuntimeError("benchmark input differs from stored oracle")
         electrodes = args.electrodes or list(JUDGED)
+        route_stats: dict[str, int] = {}
+        if args.route_stats:
+            if not hasattr(auto_open, "evaluate_blocks"):
+                raise ValueError("route stats require the batch candidate source")
+            original_evaluate = auto_open.evaluate_blocks
+
+            def capture_routes(*call_args, **call_kwargs):
+                stats = original_evaluate(*call_args, **call_kwargs)
+                route_stats.update(vars(stats))
+                return stats
+
+            auto_open.evaluate_blocks = capture_routes
         for repeat in range(args.repeats):
             for diameter in args.sizes:
                 for electrode in electrodes:
@@ -177,6 +189,7 @@ def run(args: argparse.Namespace) -> None:
                         raise ValueError(f"missing electrode: {electrode}")
                     _disk_guard(root)
                     rss_before = _rss_bytes()
+                    route_stats.clear()
                     start = time.perf_counter()
                     result = auto_open.simulate_auto_open(
                         masks, electrode, float(diameter), float(manifest.contact_margin_um)
@@ -194,7 +207,8 @@ def run(args: argparse.Namespace) -> None:
                             raise RuntimeError(f"benchmark result differs from oracle: "
                                                f"{electrode} d={diameter}, {different}")
                     print(json.dumps({"kind": "benchmark", "repeat": repeat,
-                                      "source": str(source), **meta}), flush=True)
+                                      "source": str(source), "route_stats": route_stats,
+                                      **meta}), flush=True)
         return
     oracle_cases = root / "cases"
     oracle_cases.mkdir(exist_ok=True)
@@ -262,6 +276,7 @@ def main() -> None:
     parser.add_argument("--all-electrodes", action="store_true")
     parser.add_argument("--electrodes", nargs="+")
     parser.add_argument("--repeats", type=int, default=3)
+    parser.add_argument("--route-stats", action="store_true")
     args = parser.parse_args()
     if args.mode == "prepare":
         prepare(args.oracle_dir.resolve())

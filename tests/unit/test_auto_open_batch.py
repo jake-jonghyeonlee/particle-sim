@@ -14,12 +14,15 @@ import numpy as np
 import pytest
 from scipy.ndimage import label
 
+from particle_sim.failure import auto_open, auto_open_batch
 from particle_sim.failure.auto_open import (
     _reference_auto_open_judgement,
     electrode_terminals,
     simulate_auto_open,
 )
+from particle_sim.failure.auto_open_batch import footprint_envelopes
 from particle_sim.failure.open_failure import _mask_bounds, open_candidates, particle_footprint
+from particle_sim.failure.open_fast import LocalConnectivity
 from particle_sim.io.masks import GridSpec, MaskSet
 
 
@@ -137,13 +140,22 @@ def test_full_crop_matrix(name: str, diameter: int) -> None:
 @pytest.mark.parametrize("diameter,margin,spacing", [
     (0.0, 0.0, (1.0, 1.0)), (2.0, 0.03, (0.13, 0.07)),
     (0.2, -0.2, (0.1, 0.1)), (8.6, 0.0, (0.1, 0.1)),
-    (8.6, 0.0, (0.13, 0.07)),
+    (8.6, 0.0, (0.13, 0.07)), (0.2, 0.0, (0.1, 0.1)),
+    (0.6, 0.0, (0.1, 0.1)), (3.0, -0.2, (0.13, 0.07)),
 ])
 def test_numeric_footprints(diameter: float, margin: float, spacing: tuple[float, float]) -> None:
     masks = _case("branch")
     masks = replace(masks, grid=GridSpec(shape_yx=(32, 40), pixel_size_y_um=spacing[0],
                                         pixel_size_x_um=spacing[1]))
     _compare_full_crop(masks, diameter, margin)
+
+
+@pytest.mark.parametrize("spacing", [1e110, 1e140])
+def test_unsafe_edt_spacing_uses_unchanged_local_classes(spacing: float) -> None:
+    masks = _case("tiny")
+    masks = replace(masks, grid=GridSpec(shape_yx=(2, 3), pixel_size_y_um=spacing,
+                                        pixel_size_x_um=spacing))
+    _compare_full_crop(masks, 1.2 * spacing)
 
 
 def test_cno_reversal() -> None:
@@ -162,12 +174,130 @@ def test_cno_reversal() -> None:
     _compare_full_crop(masks, 3)
     assert simulate_auto_open(masks, "W", 2, 0).failure[7, 4]
     assert not simulate_auto_open(masks, "W", 3, 0).failure[7, 4]
+    stamp = particle_footprint(masks.grid, 1, 0)
+    regions = []
+    for terminal in electrode_terminals(masks, "W"):
+        region = np.zeros((2, 10), bool)
+        region[terminal.ys - 7, terminal.xs - 2] = True
+        regions.append(region)
+    lc = LocalConnectivity(electrode[7:9, 2:12], regions, 5, 5)
+    left = lc.terminal_classes((0, 0), stamp)
+    right = lc.terminal_classes((0, 8), stamp)
+    assert left is not None and right is not None
+    assert bool(left[1]) != bool(right[1])  # same 9×9 block, contact survival changes
+    candidate_ys, candidate_xs = np.nonzero(open_candidates(electrode, masks.grid, 1, 0))
+    output = np.zeros_like(electrode)
+    stats = auto_open_batch.evaluate_blocks(
+        electrode[7:9, 2:12], regions, [[0, 1]], ("contact", "contact"), stamp,
+        candidate_ys, candidate_xs, 7, 2, output, auto_open._judges_open,
+    )
+    assert stats.fallback_centres >= 27
+    assert np.array_equal(output, simulate_auto_open(masks, "W", 2, 0).failure)
+
+
+def test_envelopes_are_literal_shifted_stamp() -> None:
+    for stamp in (np.array([[True]], bool),
+                  np.array([[False, True, False], [True, True, False],
+                            [False, False, True]], bool)):
+        upper, lower = footprint_envelopes(stamp)
+        radius = 4
+        shifted = []
+        for dy in range(-radius, radius + 1):
+            for dx in range(-radius, radius + 1):
+                image = np.zeros(upper.shape, bool)
+                image[radius + dy:radius + dy + stamp.shape[0],
+                      radius + dx:radius + dx + stamp.shape[1]] = stamp
+                shifted.append(image)
+        assert np.array_equal(upper, np.logical_or.reduce(shifted))
+        assert np.array_equal(lower, np.logical_and.reduce(shifted))
+    with pytest.raises(ValueError, match="odd"):
+        footprint_envelopes(np.ones((2, 4), bool))
+
+
+@pytest.mark.parametrize("anchor", [(-5, -5), (0, 0), (13, 13)])
+def test_shifted_envelopes_clip_at_crop_edges(anchor: tuple[int, int]) -> None:
+    stamp = np.ones((11, 11), bool)
+    stamp[0, 0] = stamp[-1, -1] = False
+    upper, lower = footprint_envelopes(stamp)
+
+    def placed(mask: np.ndarray, centre: tuple[int, int]) -> np.ndarray:
+        canvas = np.zeros((20, 21), bool)
+        top, left = centre[0] - mask.shape[0] // 2, centre[1] - mask.shape[1] // 2
+        y0, x0 = max(0, top), max(0, left)
+        y1, x1 = min(20, top + mask.shape[0]), min(21, left + mask.shape[1])
+        if y0 < y1 and x0 < x1:
+            canvas[y0:y1, x0:x1] = mask[y0 - top:y1 - top, x0 - left:x1 - left]
+        return canvas
+
+    shifted = [placed(stamp, (anchor[0] + dy, anchor[1] + dx))
+               for dy in range(-4, 5) for dx in range(-4, 5)]
+    assert np.array_equal(placed(upper, anchor), np.logical_or.reduce(shifted))
+    assert np.array_equal(placed(lower, anchor), np.logical_and.reduce(shifted))
+
+
+def test_negative_crop_centres_and_partial_blocks_write_candidates_only(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    seen = []
+
+    class NoRemoval:
+        def __init__(self, *args, **kwargs):
+            self.tile_y = self.tile_x = 10
+
+        def terminal_classes(self, center, footprint):
+            seen.append(center)
+            return None
+
+    monkeypatch.setattr(auto_open_batch, "LocalConnectivity", NoRemoval)
+    ys = np.array([0, 1, 8, 9, 17, 18])
+    xs = np.array([1, 8, 9, 17, 18, 19])
+    failure = np.ones((20, 21), bool)
+    stats = auto_open_batch.evaluate_blocks(
+        np.ones((10, 10), bool), [np.ones((10, 10), bool)] * 2,
+        [[0, 1]], ("contact", "contact"), np.ones((3, 3), bool),
+        ys, xs, 5, 5, failure, auto_open._judges_open,
+    )
+    assert (-5, -5) in seen  # block containing negative crop-relative centres
+    assert any(y >= 13 or x >= 13 for y, x in seen)  # partial final block
+    assert stats.certified_false == len(ys)
+    assert stats.fallback_centres == 0
+    assert np.count_nonzero(~failure) == len(ys)
+    assert not failure[ys, xs].any()
+
+
+def test_batch_routes_and_local_rollback(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.delenv("PARTICLE_SIM_OPEN_BACKEND", raising=False)
+    real = auto_open.evaluate_blocks
+    totals = [0, 0, 0]
+
+    def capture(*args, **kwargs):
+        stats = real(*args, **kwargs)
+        totals[0] += stats.certified_false
+        totals[1] += stats.certified_true
+        totals[2] += stats.fallback_centres
+        return stats
+
+    monkeypatch.setattr(auto_open, "evaluate_blocks", capture)
+    for name in ("branch", "hole", "edges", "solid", "corner", "bridge"):
+        for diameter in (2, 5, 10, 20, 30):
+            _compare_full_crop(_case(name), diameter)
+    assert all(totals), totals
+
+    def forbidden(*args, **kwargs):
+        raise AssertionError("batch preparation invoked under local rollback")
+
+    monkeypatch.setattr(auto_open, "evaluate_blocks", forbidden)
+    monkeypatch.setenv("PARTICLE_SIM_OPEN_BACKEND", "local")
+    _compare_full_crop(_case("branch"), 5)
+    monkeypatch.setenv("PARTICLE_SIM_OPEN_BACKEND", "invalid")
+    with pytest.raises(ValueError, match="PARTICLE_SIM_OPEN_BACKEND"):
+        simulate_auto_open(_case("branch"), "W", 5, 0)
 
 
 @pytest.mark.parametrize("mutation,old,new", [
-    ("cno_as_open", "# Rule 3: contact terminal fully covered → skip (CNO, not open)",
-     "is_open = True; break  # mutant contact loss"),
-    ("boundary_ignored", 'elif kind == "roi_boundary":', "elif False:"),
+    ("cno_as_open", "# A covered contact is CNO and leaves the group comparison.",
+     "return True  # mutant contact loss"),
+    ("boundary_ignored", 'elif kinds[index] == "roi_boundary":', "elif False:"),
     ("candidate_count", "int(candidates.sum()))", "0)"),
 ])
 def test_contract_rejects_disposable_mutant(
