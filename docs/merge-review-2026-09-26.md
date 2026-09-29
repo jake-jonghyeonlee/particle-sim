@@ -127,7 +127,7 @@
 
 - 제품 파일 수정, 커밋, 병합, push, 브랜치 변경은 하지 않았다.
 - 추적되지 않은 `docs/layout-electrode-extraction-plan.md`는 보존했다.
-- 이 문서는 커밋하지 않은 새 파일이다.
+- 이 문서는 당시 커밋하지 않은 새 파일이었다(2026-09-29 커밋).
 
 ## 커밋과 병합 (2026-09-27, 사용자 지시)
 
@@ -149,6 +149,11 @@
 
 호환성 영향: F5는 실행 뒤 제품 YAML을 수정하면(예: `fab_id` 변경) `apply-fab --run`을 거부한다. 이때는 수정한 YAML로 다시 실행해야 한다. F10은 일부 mask만 적은 기존 비교 YAML을 거부한다.
 
-남은 항목: F8, F9, F11–F16(Note), V3-1, V3-2. 이 수정본의 독립 검토는 아직 받지 않았다.
+남은 항목: F8, F9, F11–F16(Note), V3-1, V3-2.
 
-같은 정리에서 `docs/layout-electrode-extraction-plan.md`는 삭제했다. `layout-electrode-extractor` 저장소의 `docs/PLAN.md`와 바이트 단위로 같고 그 저장소에서 관리한다.
+독립 검토(새 Opus 세션, high, `5dccfc6` 대상): **PASS-WITH-NOTES**. Minor 1건(F4 테스트가 mask hash 불일치를 검사하지 않음)과 F6 호출부 자동 테스트 부재(Note)는 테스트를 추가해 보완했다. 나머지 Note는 다음과 같다.
+- F6 개수는 scenario 변형 전 명목 mask 기준이다.
+- F10은 terminal·contact mask hash까지 요구한다. 기존 sim이 읽지 않은 파일이어도 run_manifest에서 복사해 적어야 한다.
+- F5 때문에 실행 뒤 제품 YAML을 수정하는 흐름은 막힌다(의도된 동작).
+
+같은 정리에서 추적되지 않던 `docs/layout-electrode-extraction-plan.md`를 삭제했다(커밋 diff에는 나타나지 않는다). `layout-electrode-extractor` 저장소의 `docs/PLAN.md`와 바이트 단위로 같고 그 저장소에서 관리한다.

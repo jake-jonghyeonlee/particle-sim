@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import dataclasses
 import json
 from pathlib import Path
 
@@ -164,6 +165,7 @@ def test_probability_run_is_matched_by_manifest_hash(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     manifest, masks = _inputs()
+    masks = dataclasses.replace(masks, input_hashes={"masks/M2.png": "a" * 64})
     manifest_path = tmp_path / "product.yaml"
     manifest_path.write_text("product", encoding="utf-8")
     run = tmp_path / "run"
@@ -185,7 +187,7 @@ def test_probability_run_is_matched_by_manifest_hash(
         # Covers manifest and scenario, so it never equals the manifest-only hash.
         "config_hash": canonical_hash({"manifest": manifest.model_dump(mode="json"),
                                        "scenario": {}}),
-        "input_hashes": {"manifest": file_sha256(manifest_path)},
+        "input_hashes": {"manifest": file_sha256(manifest_path), "masks/M2.png": "a" * 64},
     }
     (run / "run_manifest.json").write_text(json.dumps(run_manifest), encoding="utf-8")
     monkeypatch.setattr("particle_sim.validation.central_window.load_manifest", lambda _: manifest)
@@ -198,6 +200,13 @@ def test_probability_run_is_matched_by_manifest_hash(
     assert all(
         "scenario_variation_influence_not_bounded" in row["reasons"] for row in audit["support"]
     )
+
+    other_mask = dataclasses.replace(masks, input_hashes={"masks/M2.png": "b" * 64})
+    monkeypatch.setattr(
+        "particle_sim.validation.central_window.load_product_masks", lambda *_: other_mask
+    )
+    with pytest.raises(InputContractError, match="does not match product config"):
+        analyze_central(manifest_path, tmp_path / "central-other-mask", run_dir=run)
 
     manifest_path.write_text("other product", encoding="utf-8")
     with pytest.raises(InputContractError, match="does not match product config"):
