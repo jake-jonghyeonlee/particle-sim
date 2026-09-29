@@ -825,8 +825,8 @@ uv run particle-sim simulate-probability \
 
 기존 sim 결과와 기준 조건을 비교할 때는 `configs/legacy-sim-reference.example.yaml`을 복사해 실제
 파일 경로와 모든 공통 조건을 채운 뒤 실행한다. 비교 계약 schema 2.0은 `product_id`, `design_version`,
-기존 sim이 사용한 mask 파일의 `input_hashes`를 요구하며, 모두 현재 실행의 `run_manifest.json`과 같아야
-한다. 현재 실행 manifest에 pixel 크기가 없거나 reference 배열 shape이 다르면 출력 폴더를 만들기 전에
+기존 sim이 사용한 mask 파일의 `input_hashes`를 요구한다. 현재 실행 `run_manifest.json`의 모든 mask
+hash(`manifest`·`scenario` 제외)를 빠짐없이 적어야 하며 값이 모두 같아야 한다. 현재 실행 manifest에 pixel 크기가 없거나 reference 배열 shape이 다르면 출력 폴더를 만들기 전에
 거부한다. 기존 sim에 없던 전극 조합은 `new_pair`, open·CNO 단위는 `new_unit`, 적용 공정이 아닌 조건은
 `not_applicable`로 분류한다.
 

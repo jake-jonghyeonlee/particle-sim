@@ -33,7 +33,7 @@ from particle_sim.geometry.transforms import (
     apply_scenario_to_stack,
     scenario_manifest,
 )
-from particle_sim.io.masks import MaskSet, load_product_masks
+from particle_sim.io.masks import MaskSet, layer_unassigned_warnings, load_product_masks
 from particle_sim.io.outputs import (
     CA_COLUMNS,
     PROBABILITY_SEMANTICS,
@@ -508,7 +508,8 @@ def run_nominal(
         source_steps=[s.step_id for s in steps],
         assumption_set=assumption_set,
         warnings=[*todo_physics_warnings(manifest),
-                  *structural_zero_short_warnings(manifest, stack_z)],
+                  *structural_zero_short_warnings(manifest, stack_z),
+                  *layer_unassigned_warnings(masks)],
         legacy_kernel=manifest.legacy_kernel.model_dump(mode="json"),
         post_step_policy=manifest.post_step_policy.model_dump(mode="json"),
         created_at=created_at,
@@ -876,7 +877,8 @@ def run_probability(
             assumption_set=assumption_set,
             warnings=[*todo_physics_warnings(manifest),
                       *scenario_warnings(scenario_config),
-                      *structural_zero_short_warnings(manifest, stack_z)],
+                      *structural_zero_short_warnings(manifest, stack_z),
+                      *layer_unassigned_warnings(masks)],
             legacy_kernel=manifest.legacy_kernel.model_dump(mode="json"),
             post_step_policy=manifest.post_step_policy.model_dump(mode="json"),
             created_at=created_at,

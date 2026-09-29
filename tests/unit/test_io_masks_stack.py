@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import dataclasses
 from pathlib import Path
 
 import numpy as np
@@ -12,7 +13,13 @@ from PIL import Image
 
 from particle_sim.config import load_manifest
 from particle_sim.errors import InputContractError
-from particle_sim.io.masks import GridSpec, MaskSet, load_binary_mask, load_product_masks
+from particle_sim.io.masks import (
+    GridSpec,
+    MaskSet,
+    layer_unassigned_warnings,
+    load_binary_mask,
+    load_product_masks,
+)
 from particle_sim.io.stack import (
     build_stack_z,
     landing_surface_z_um,
@@ -318,6 +325,10 @@ class TestLoadProductMasks:
         manifest = load_manifest(mpath)
         masks = load_product_masks(manifest, mpath)
         assert masks.layer_unassigned_pixels == {"L0": 84}
+        [warning] = layer_unassigned_warnings(masks)
+        assert warning.startswith("LAYER_UNASSIGNED:") and "L0=84" in warning
+        masks = dataclasses.replace(masks, layer_unassigned_pixels={"L0": 0})
+        assert layer_unassigned_warnings(masks) == []
 
     def test_electrode_outside_layer_fails(self, tmp_path: Path) -> None:
         d = tmp_path / "masks"

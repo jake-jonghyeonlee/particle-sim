@@ -111,6 +111,13 @@ def test_reference_from_another_product_or_mask_is_rejected(tmp_path: Path) -> N
     with pytest.raises(InputContractError, match="입력 mask가 다릅니다"):
         compare_legacy_sim(config, run, tmp_path / "other-mask")
 
+    hashes = dict(original["input_hashes"])
+    hashes.pop(sorted(hashes)[0])
+    data = dict(original, input_hashes=hashes)
+    config.write_text(yaml.safe_dump(data), encoding="utf-8")
+    with pytest.raises(InputContractError, match="mask가 빠져 있습니다"):
+        compare_legacy_sim(config, run, tmp_path / "subset-mask")
+
     data = dict(original, input_hashes={})
     config.write_text(yaml.safe_dump(data), encoding="utf-8")
     with pytest.raises(InputContractError, match="input_hashes"):

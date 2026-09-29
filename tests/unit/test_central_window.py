@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import dataclasses
 import json
 from pathlib import Path
 
@@ -7,11 +8,11 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from particle_sim.config import canonical_hash
+from particle_sim.config import canonical_hash, file_sha256
 from particle_sim.errors import InputContractError
 from particle_sim.geometry.contacts import ContactHole, ContactLink, ContactTopology
 from particle_sim.io.masks import GridSpec, MaskSet
-from particle_sim.io.outputs import HotspotStore, open_hotspot_store
+from particle_sim.io.outputs import HotspotStore, ProbabilityStore, open_hotspot_store
 from particle_sim.schema import PARTICLE_SIZES_UM, Contact, OpenPath, ProductManifest
 from particle_sim.validation.central_window import (
     NONLOCAL_OPEN,
@@ -158,3 +159,55 @@ def test_analysis_keeps_full_map_and_writes_central_sidecars(
     assert bool(table.iloc[0].supported)
     raw = open_hotspot_store(run / "hotspots.zarr")
     assert int(np.asarray(raw["nominal_failure"][0, 0, 0]).sum()) == 2
+
+
+def test_probability_run_is_matched_by_manifest_hash(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    manifest, masks = _inputs()
+    masks = dataclasses.replace(masks, input_hashes={"masks/M2.png": "a" * 64})
+    manifest_path = tmp_path / "product.yaml"
+    manifest_path.write_text("product", encoding="utf-8")
+    run = tmp_path / "run"
+    run.mkdir()
+    store = ProbabilityStore(
+        run / "probability.zarr", source_steps=[manifest.particle_source_steps[0].step_id],
+        particle_sizes_um=list(PARTICLE_SIZES_UM), unit_ids=["A__B"],
+        unit_modes=["lateral_short"], unit_kinds=["electrode_pair"],
+        union_keys=["lateral_short", "any"], shape_yx=(1200, 1200),
+    )
+    zeros = np.zeros((1200, 1200), dtype=np.float32)
+    for size_index in range(len(PARTICLE_SIZES_UM)):
+        store.write_unit(0, size_index, 0, probability=zeros, margin_mean_um=zeros)
+        for union_index in range(2):
+            store.write_union(0, size_index, union_index, probability=zeros)
+    run_manifest = {
+        "product_id": manifest.product_id,
+        "design_version": manifest.design_version,
+        # Covers manifest and scenario, so it never equals the manifest-only hash.
+        "config_hash": canonical_hash({"manifest": manifest.model_dump(mode="json"),
+                                       "scenario": {}}),
+        "input_hashes": {"manifest": file_sha256(manifest_path), "masks/M2.png": "a" * 64},
+    }
+    (run / "run_manifest.json").write_text(json.dumps(run_manifest), encoding="utf-8")
+    monkeypatch.setattr("particle_sim.validation.central_window.load_manifest", lambda _: manifest)
+    monkeypatch.setattr(
+        "particle_sim.validation.central_window.load_product_masks", lambda *_: masks
+    )
+    result = analyze_central(manifest_path, tmp_path / "central", run_dir=run)
+    assert result["unit_rows"] == 32 and result["unsupported"] == 32
+    audit = json.loads((tmp_path / "central" / "central_support.json").read_text())
+    assert all(
+        "scenario_variation_influence_not_bounded" in row["reasons"] for row in audit["support"]
+    )
+
+    other_mask = dataclasses.replace(masks, input_hashes={"masks/M2.png": "b" * 64})
+    monkeypatch.setattr(
+        "particle_sim.validation.central_window.load_product_masks", lambda *_: other_mask
+    )
+    with pytest.raises(InputContractError, match="does not match product config"):
+        analyze_central(manifest_path, tmp_path / "central-other-mask", run_dir=run)
+
+    manifest_path.write_text("other product", encoding="utf-8")
+    with pytest.raises(InputContractError, match="does not match product config"):
+        analyze_central(manifest_path, tmp_path / "central-other", run_dir=run)

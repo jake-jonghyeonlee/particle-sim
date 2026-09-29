@@ -211,3 +211,60 @@ def test_risk_tables_reject_unknown_unit_and_missing_any_union(
             ca, missing_union, table, manifest,
             fab_id=manifest.fab_id, weighting_mode="actual",
         )
+
+
+def test_apply_fab_run_rejects_other_design_or_manifest(
+    case: tuple[Path, Path], tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    import yaml
+
+    manifest_path, _ = case
+    run_dir = tmp_path / "nominal-identity"
+    assert main([
+        "simulate-nominal", "--product-config", str(manifest_path),
+        "--output", str(run_dir),
+    ]) == 0
+    capsys.readouterr()
+    fab_path = write_fab_table(tmp_path / "fab-identity")
+    data = yaml.safe_load(manifest_path.read_text(encoding="utf-8"))
+    for name, change, message in (
+        ("other-design", {"design_version": "V99_OTHER"}, "design_version"),
+        ("other-family", {"product_family": "OTHER_FAMILY"}, "input_hashes.manifest"),
+    ):
+        other = manifest_path.with_name(f"{name}.yaml")
+        other.write_text(yaml.safe_dump({**data, **change}), encoding="utf-8")
+        assert main([
+            "apply-fab", "--run", str(run_dir), "--fab-data", str(fab_path),
+            "--product-config", str(other), "--bin-method", "exact_point",
+            "--mode", "actual", "--output", str(tmp_path / f"risk-{name}"),
+        ]) == 2
+        assert message in capsys.readouterr().err
+        assert not (tmp_path / f"risk-{name}").exists()
+
+
+def test_nominal_run_records_unassigned_layer_warning(
+    case: tuple[Path, Path], tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    import numpy as np
+    import yaml
+    from PIL import Image
+
+    manifest_path, _ = case
+    data = yaml.safe_load(manifest_path.read_text(encoding="utf-8"))
+    layer = next(item for item in data["layer_masks"] if item["layer_name"] == "M2")
+    mask_path = manifest_path.parent / layer["path"]
+    pixels = np.array(Image.open(mask_path))
+    pixels[0, 0] = pixels.max()
+    Image.fromarray(pixels).save(mask_path)
+    run_dir = tmp_path / "nominal-unassigned"
+    assert main([
+        "simulate-nominal", "--product-config", str(manifest_path),
+        "--output", str(run_dir),
+    ]) == 0
+    capsys.readouterr()
+    manifest = json.loads((run_dir / "run_manifest.json").read_text(encoding="utf-8"))
+    assert manifest["layer_unassigned_pixels"]["M2"] == 1
+    assert any(
+        warning.startswith("LAYER_UNASSIGNED:") and "M2=1" in warning
+        for warning in manifest["warnings"]
+    )

@@ -141,6 +141,15 @@ def test_cross_reference_violations(name: str, mutate) -> None:
         ProductManifest.model_validate(d)
 
 
+def test_pair_and_open_path_ids_must_differ() -> None:
+    d = base_manifest()
+    d["open_paths"] = [{"path_id": "O1", "electrode": "E1", "fallback": "roi_boundary"}]
+    ProductManifest.model_validate(d)
+    d["open_paths"][0]["path_id"] = "P1"
+    with pytest.raises(ValidationError, match=r"pair_id와 open_paths의 path_id가 겹칩니다: \['P1'\]"):
+        ProductManifest.model_validate(d)
+
+
 def test_legacy_kernel_even_size() -> None:
     d = base_manifest()
     d["legacy_kernel"] = {"size": 4}
