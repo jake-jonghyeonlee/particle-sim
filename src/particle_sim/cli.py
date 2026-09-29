@@ -378,6 +378,30 @@ def _make_report(args: argparse.Namespace) -> int:
     return 0
 
 
+def _make_variant(args: argparse.Namespace) -> int:
+    from particle_sim.variant.package import make_variants
+
+    records = make_variants(Path(args.product_config), Path(args.edits), Path(args.output),
+                            args.candidate or None)
+    _print_json({
+        "status": "ok",
+        "output": str(Path(args.output)),
+        "variants": [
+            {
+                "candidate_id": r["candidate_id"],
+                "manifest": r["manifest"],
+                "design_version": r["design_version"],
+                "removed_area_um2": sum(e["removed_area_um2"] for e in r["edits"]),
+                "electrode_split": [k for k, v in r["checks"]["electrodes"].items() if v["split"]],
+                "contact_overlap": r["checks"]["contact_overlap"],
+            }
+            for r in records
+        ],
+        "next": "각 manifest로 simulate-nominal → export-simcompare를 실행해 simcompare에 추가합니다",
+    })
+    return 0
+
+
 def _compare_sim(args: argparse.Namespace) -> int:
     from particle_sim.comparison.legacy_sim import compare_legacy_sim
 
@@ -477,6 +501,17 @@ def build_parser() -> argparse.ArgumentParser:
     export.add_argument("--product-config", required=True, help="제품 manifest YAML 경로")
     export.add_argument("--output", required=True, help="출력 디렉터리(비어 있어야 함)")
     export.set_defaults(func=_export_simcompare)
+
+    variant = subparsers.add_parser(
+        "make-variant", help="편집 지정서로 국소 마스크 편집 변경본 입력을 만든다"
+    )
+    variant.add_argument("--product-config", required=True, help="원안 제품 manifest YAML 경로")
+    variant.add_argument("--edits", required=True,
+                         help="편집 지정서(simcompare edit_candidates.json 또는 설계자 YAML)")
+    variant.add_argument("--output", required=True, help="변경본 패키지를 쓸 폴더")
+    variant.add_argument("--candidate", action="append", default=[],
+                         help="만들 candidate_id. 여러 번 지정 가능, 생략하면 전부")
+    variant.set_defaults(func=_make_variant)
 
     compare = subparsers.add_parser(
         "compare-sim", help="기존 sim hotspot과 현재 기준 조건 결과를 픽셀 단위로 비교한다"

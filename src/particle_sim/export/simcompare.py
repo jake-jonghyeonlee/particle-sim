@@ -85,6 +85,24 @@ def _fab_pair_key(raw_unit: str, layer_a: str, layer_b: str,
     return key
 
 
+def _variant_parent(manifest_path: Path, manifest) -> tuple[str | None, str | None]:
+    """make-variant가 manifest 옆에 남긴 variant_record.json에서 원안 ID와 변경 설명을 읽는다."""
+    record_path = manifest_path.parent / "variant_record.json"
+    if not record_path.exists():
+        return None, None
+    try:
+        record = json.loads(record_path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as exc:
+        raise InputContractError(f"variant_record.json을 읽을 수 없습니다: {exc}",
+                                 file=str(record_path)) from exc
+    if (record.get("product_id") != manifest.product_id
+            or record.get("design_version") != manifest.design_version):
+        raise InputContractError(
+            "variant_record.json의 product_id/design_version이 manifest와 다릅니다",
+            product_id=manifest.product_id, file=str(record_path))
+    return record.get("parent_design_id"), record.get("change_description")
+
+
 def export_simcompare(run_dir: Path, manifest_path: Path, out_dir: Path, *,
                       ca_mode: str = "nominal") -> Path:
     """Write simcompare bundles/layouts/hotspots/ca_records for every applicable supported (step, unit)."""
@@ -96,6 +114,7 @@ def export_simcompare(run_dir: Path, manifest_path: Path, out_dir: Path, *,
     out_dir = Path(out_dir)
     manifest = load_manifest(manifest_path)
     product_id = manifest.product_id
+    parent_design_id, change_description = _variant_parent(manifest_path, manifest)
     if out_dir.exists() and (not out_dir.is_dir() or any(out_dir.iterdir())):
         raise InputContractError(
             f"출력 경로가 비어 있지 않습니다(덮어쓰기 금지): {out_dir}",
@@ -341,8 +360,8 @@ def export_simcompare(run_dir: Path, manifest_path: Path, out_dir: Path, *,
                 "unit_width": manifest.coordinate_system.roi_width_um,
                 "unit_height": manifest.coordinate_system.roi_height_um,
                 "physical_length_unit": "um",
-                "parent_design_id": None,
-                "change_description": None,
+                "parent_design_id": parent_design_id,
+                "change_description": change_description,
                 "calc_version": calc_version,
             }
         )

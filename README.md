@@ -100,6 +100,12 @@ uv run particle-sim compare-sim \
 | `convergence.csv` | seed별 64/128/256 조건 CA와 직전 대비 상대 변화 |
 | `run_manifest.json` | 모든 seed, Sobol m, 시나리오 수, 산포 근거, 산포 제외 조건(`scenario_exclusions`), artifact hash |
 
+`make-variant`는 회피안 검토용 국소 마스크 편집 변경본 입력을 만든다. simcompare의 `edit_candidates.json`이나
+설계자 YAML에 적은 ROI 안에서만 전극을 제거·후퇴(`remove_region`, `trim_near`, `remove_overlap`)하고,
+편집 전후 측정값·전극 분리·단자 연결 점검(`variant_record.json`)과 미리보기(`edit_preview.png`)를 남긴다.
+만든 manifest로 `simulate-nominal` → `export-simcompare`를 실행하면 원안 ID(`parent_design_id`)가 함께 내보내진다.
+자세한 형식은 [docs/arch/variant.md](docs/arch/variant.md).
+
 `export-simcompare`는 [particle-sim-compare](https://github.com/jake-jonghyeonlee/particle-sim-compare)의
 adapter 입력 형식(`bundles.csv`, `layouts.csv`, `hotspots.csv`, `ca_records.csv`,
 `layer_stack.csv`, `geometry.json`, `provenance.json`, `arrays/*.png` / `arrays/*.npy`)으로 내보낸다.
