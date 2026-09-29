@@ -123,12 +123,10 @@ class LocalConnectivity:
         local: list[tuple[np.ndarray, np.ndarray]] = []
         outer: list[frozenset[int]] = []
         for region in self.terminals:
-            inside = np.zeros_like(region)
-            inside[top:bottom, left:right] = region[top:bottom, left:right]
-            ys, xs = np.nonzero(inside)
-            local.append((ys - top, xs - left))
-            beyond = region & ~inside
-            labels = outside_labels[beyond]
+            local.append(np.nonzero(region[top:bottom, left:right]))
+            # The outside image is zero in the tile window, so indexing by the
+            # full terminal region gives exactly the labels beyond the window.
+            labels = outside_labels[region]
             outer.append(frozenset(int(v) for v in np.unique(labels) if v))
 
         tile = _Tile(
@@ -202,7 +200,9 @@ class LocalConnectivity:
             (inside_labels[:, 0], tile.outside_left),
             (inside_labels[:, width - 1], tile.outside_right),
         ):
-            for index in np.nonzero((inside > 0) & (outside > 0))[0]:
+            valid = (inside > 0) & (outside > 0)
+            valid[1:] &= (inside[1:] != inside[:-1]) | (outside[1:] != outside[:-1])
+            for index in np.nonzero(valid)[0]:
                 union.union(("in", int(inside[index])), ("out", int(outside[index])))
 
         result: list[set[_Class]] = []

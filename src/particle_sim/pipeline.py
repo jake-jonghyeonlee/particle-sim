@@ -67,6 +67,7 @@ from particle_sim.validation.convergence import (
     is_converged,
 )
 from particle_sim.validation.regression import explain_legacy_vs_edt
+from particle_sim.validation.short_feasibility import structural_zero_short_warnings
 
 # scenario classifications that are excluded from particle-caused CA and must be reported
 SCENARIO_EXCLUSIONS = (*EXCLUDED_CLASSIFICATIONS, CONTACT_LOST, INSUFFICIENT_TERMINALS)
@@ -115,6 +116,12 @@ class NominalRunResult:
     union_table: Path
     legacy_comparison: Path
     run_manifest: Path
+
+
+def _unpack_legacy_map(packed: np.ndarray, shape: tuple[int, int]) -> np.ndarray:
+    """Restore a cached legacy map, excluding padding bits in the final byte."""
+    height, width = shape
+    return np.unpackbits(packed, count=height * width).reshape(height, width).astype(bool)
 
 
 def _require_empty_output(output_dir: Path, product_id: str) -> None:
@@ -299,7 +306,7 @@ def run_nominal(
     open_cache: OpenResultCache = {}
     ca_rows: list[dict] = []
     union_rows: list[dict] = []
-    legacy_cache: dict[tuple[int, int], np.ndarray] = {}
+    legacy_cache: dict[tuple[int, int], tuple[np.ndarray, tuple[int, int]]] = {}
     comparison_rows: list[dict] = []
 
     for size_index, diameter in enumerate(sizes):
@@ -311,7 +318,7 @@ def run_nominal(
                 grid,
                 manifest.legacy_kernel,
             )
-            legacy_cache[(size_index, pair_index)] = legacy
+            legacy_cache[(size_index, pair_index)] = (np.packbits(legacy), legacy.shape)
             cmp = explain_legacy_vs_edt(
                 masks.electrodes[pair.electrode_a],
                 masks.electrodes[pair.electrode_b],
@@ -335,6 +342,19 @@ def run_nominal(
 
     pair_index_by_id = {unit_id: i for i, unit_id in enumerate(unit_id_list)}
     empty_legacy = np.zeros(grid.shape_yx, dtype=bool)
+    last_step_by_unit = {
+        spec.unit_id: max(
+            (
+                index
+                for index, step in enumerate(steps)
+                if spec.applicable_steps is None or step.step_id in spec.applicable_steps
+            ),
+            default=-1,
+        )
+        for spec in specs
+        if spec.unit_kind != KIND_PAIR
+    }
+    contact_margin = float(manifest.contact_margin_um)
     for step_index, step in enumerate(steps):
         for size_index, diameter in enumerate(sizes):
             results = evaluate_units(
@@ -345,13 +365,19 @@ def run_nominal(
                 diameter,
                 cache,
                 open_cache,
+                shared_readonly_placeholders=True,
             )
             by_id = {r.pair_id: r for r in results}
             allocation = allocate_risk(results, grid)
             nominal_ca: dict[str, float] = {}
             for pair_index, unit_id in enumerate(unit_id_list):
                 pair_result = by_id[unit_id]
-                legacy = legacy_cache.get((size_index, pair_index), empty_legacy)
+                packed_legacy = legacy_cache.get((size_index, pair_index))
+                legacy = (
+                    _unpack_legacy_map(*packed_legacy)
+                    if packed_legacy is not None
+                    else empty_legacy
+                )
                 spec = spec_by_id[unit_id]
                 store.write_pair(
                     step_index,
@@ -416,8 +442,9 @@ def run_nominal(
                 legacy_union = np.zeros(grid.shape_yx, dtype=bool)
                 for pair_id in union.pair_ids:
                     legacy_key = (size_index, pair_index_by_id[pair_id])
-                    if legacy_key in legacy_cache:
-                        legacy_union |= legacy_cache[legacy_key]
+                    packed_legacy = legacy_cache.get(legacy_key)
+                    if packed_legacy is not None:
+                        legacy_union |= _unpack_legacy_map(*packed_legacy)
                 ca_union = critical_area_um2(union.any_failure, grid)
                 union_rows.append(
                     {
@@ -450,6 +477,18 @@ def run_nominal(
                     }
                 )
 
+            # Results remain live in ``results`` through writes and unions. Once this
+            # step has consumed a unit's final applicable result at this diameter,
+            # its cache entry cannot be reused by the remaining step-major traversal.
+            for unit_id, last_step_index in last_step_by_unit.items():
+                if step_index == last_step_index:
+                    open_cache.pop((unit_id, float(diameter), contact_margin), None)
+
+            # The next evaluation must not inherit this cycle's uncached result graph.
+            # Multi-step open results remain owned by open_cache until their last step.
+            del results, by_id, pair_result, allocation, unions, union
+            del legacy, legacy_union
+
     write_table(ca_rows, CA_COLUMNS, result.ca_table)
     write_table(union_rows, UNION_CA_COLUMNS, result.union_table)
     with result.legacy_comparison.open("w", newline="", encoding="utf-8") as handle:
@@ -468,7 +507,8 @@ def run_nominal(
         particle_sizes_um=[float(s) for s in sizes],
         source_steps=[s.step_id for s in steps],
         assumption_set=assumption_set,
-        warnings=todo_physics_warnings(manifest),
+        warnings=[*todo_physics_warnings(manifest),
+                  *structural_zero_short_warnings(manifest, stack_z)],
         legacy_kernel=manifest.legacy_kernel.model_dump(mode="json"),
         post_step_policy=manifest.post_step_policy.model_dump(mode="json"),
         created_at=created_at,
@@ -834,7 +874,9 @@ def run_probability(
             particle_sizes_um=[float(s) for s in sizes],
             source_steps=[s.step_id for s in steps],
             assumption_set=assumption_set,
-            warnings=[*todo_physics_warnings(manifest), *scenario_warnings(scenario_config)],
+            warnings=[*todo_physics_warnings(manifest),
+                      *scenario_warnings(scenario_config),
+                      *structural_zero_short_warnings(manifest, stack_z)],
             legacy_kernel=manifest.legacy_kernel.model_dump(mode="json"),
             post_step_policy=manifest.post_step_policy.model_dump(mode="json"),
             created_at=created_at,

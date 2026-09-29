@@ -100,10 +100,48 @@ uv run particle-sim compare-sim \
 | `convergence.csv` | seed별 64/128/256 조건 CA와 직전 대비 상대 변화 |
 | `run_manifest.json` | 모든 seed, Sobol m, 시나리오 수, 산포 근거, 산포 제외 조건(`scenario_exclusions`), artifact hash |
 
+`make-variant`는 회피안 검토용 국소 마스크 편집 변경본 입력을 만든다. simcompare의 `edit_candidates.json`이나
+설계자 YAML에 적은 ROI 안에서만 전극을 제거·후퇴(`remove_region`, `trim_near`, `remove_overlap`)하고,
+편집 전후 측정값·전극 분리·단자 연결 점검(`variant_record.json`)과 미리보기(`edit_preview.png`)를 남긴다.
+만든 manifest로 `simulate-nominal` → `export-simcompare`를 실행하면 원안 ID(`parent_design_id`)가 함께 내보내진다.
+자세한 형식은 [docs/arch/variant.md](docs/arch/variant.md).
+
 `export-simcompare`는 [particle-sim-compare](https://github.com/jake-jonghyeonlee/particle-sim-compare)의
 adapter 입력 형식(`bundles.csv`, `layouts.csv`, `hotspots.csv`, `ca_records.csv`,
-`layer_stack.csv`, `geometry.json`, `provenance.json`, `arrays/*.npy`)으로 내보낸다.
+`layer_stack.csv`, `geometry.json`, `provenance.json`, `arrays/*.png` / `arrays/*.npy`)으로 내보낸다.
+명목(`simulate-nominal`) 결과만 지원하며 확률 결과는 내보내지 않는다.
+Layout은 전극별 `arrays/layout-<sanitized electrode ID>.png` 한 파일을 모든 step/sample에서 공유한다.
+이진 layout/hotspot은 8-bit grayscale PNG(0/255, lossless, zlib level 9)로 저장하고 비이진 배열은 float32 NPY를 보존하여 adapter에서
+기존 float32 값과 동일하게 읽힌다. `provenance.json`의 `array_storage`에 배열 경로별 형식/encoding/중복 제거 정책을 기록한다.
+쓰기 전 PNG는 압축 전 uint8 크기와 row filter/DEFLATE overhead, NPY는 float32 크기로 보수적으로 용량을 추정하고 헤더/CSV/파일시스템
+여유분을 더해 출력 부모의 여유 공간과 비교하며 부족하면
+아무 파일도 쓰지 않는다. 같은 부모의 임시 디렉터리에 완성한 뒤 출력 경로로 atomic rename하고,
+실패하면 임시 출력을 제거한다. 출력 디렉터리와 파일의 권한은 process umask를 따른다.
+비어 있지 않은 출력 경로는 계속 덮어쓰지 않는다.
+`electrode_pair`의 lateral/vertical short와 `open_path` / `open_electrode`의 lateral open을
+지원한다. Open은 b 전극 역할과 layer를 `N/A`로 기록하고 a layout만 생성한다.
+`contact` / `contact_not_open`은 제외하고 raw unit ID별 이유를 `export_warnings.json`에
+기록한다. Open의 baseline_open, terminal_lost, insufficient_terminals는 계속 내보내되
+step과 raw unit ID별로 CA 0이 낮은 위험이 아니라 제외된 baseline 조건임을 경고한다.
+CNO만 있는 실행도 header-only CSV로 성공하지만 분석 가능한 데이터셋은 아니다.
+적용되지 않는 source step은 제외한다. Sample ID는 product-version-step-unit을 이어 붙인 뒤
+`[A-Za-z0-9_.-]` 밖의 문자 각각을 `_`로 바꾸며, Sample ID 또는 대소문자를 구분하지 않는 array 경로가
+충돌하면 파일 생성 전에 입력 오류로 중단한다.
+원본 tuple과 ID 대응은 `provenance.json`의 `sample_id_mapping`에 기록한다.
 Fab 자료(`fab.json` / `fab_measurements.csv`)는 생성하지 않으며 `export_warnings.json`에 남는다.
+Contract 1.2: 모든 유형의 `assigned_process_layer`는 source step의 `fab_distribution_layer`다.
+CA에 해당 열이 있으면 step 내 모든 값이 manifest와 같아야 하며 공백/불일치는 쓰기 전에 거부한다.
+`fab_pair_key`는 raw unit ID와 순서대로 내보낸 layer를 그대로 이은 `<unit>:<layer_a>-<layer_b>`다.
+Open은 `<unit>:<layer_a>-N/A`이며 punctuation/Unicode를 보존한다. 공백/가장자리 whitespace와
+서로 다른 tuple이 같은 key를 만드는 경우는 거부하고, 같은 tuple의 step 간 key 반복은 허용한다.
+`provenance.json.mapping_contract_version`은 `1.2`이며 `sample_id_mapping`에도 key와 assignment를
+기록한다. `layer_stack.csv`는 legacy 소비자를 위해 기존 형식을 유지한다. 이 export는 1.2 소비자가
+필요하며 기존 1.1 export는 별도로 보존한다. Pair ID는 product-local이다. Layer-wide Fab가 기본이며
+pair-specific 자료는 identity 범위를 확인한 explicit distribution ID로 사용한다.
+
+`validate-input`과 `run_manifest.json`은 flat 표면에서 접촉 여유와 매립 깊이가 모두 0이면
+접촉이 불가능한 short pair 수를 step별 `STRUCTURAL_ZERO_SHORT` 경고로 기록한다.
+후속 layer는 exclude 정책일 때만 포함하며, open/CNO 및 계산 결과는 바꾸지 않는다.
 
 ## 핵심 규칙
 
@@ -118,3 +156,5 @@ Fab 자료(`fab.json` / `fab_measurements.csv`)는 생성하지 않으며 `expor
 - 수렴 허용 오차는 코드에 고정하지 않는다. `convergence.csv`를 보고 사람이 정한다.
 - Fab 분포는 geometry 계산이 끝난 뒤에만 적용한다. 크기 bin 정의·단위·조사 면적이 불명확하면
   가중 계산을 중단한다.
+
+CA export는 원 `ca_nominal_um2`를 `ca_value`, `um^2`를 `ca_unit`에 기록합니다. Python API의 `export_simcompare(..., ca_mode="mean")`은 확률 run에서만 허용되며 원 `ca_mean_um2`를 사용합니다(nominal run은 쓰기 전에 오류). `provenance.json`의 `calc_settings.ca_mode`와 `calc_settings.ca_source`에 선택 모드와 원 CA 열을 기록합니다. 평균 CA를 선택해도 hotspot 배열은 nominal binary footprint를 유지합니다. 단, 현재 `simulate-probability` 출력 디렉터리에는 `hotspots.zarr`가 없어 mean 모드 export는 실행 결과를 읽을 수 없다는 오류로 끝납니다. 확률 run의 평균 CA는 particle-sim-compare 검증 스크립트의 `--ca mean`(run 디렉터리 직접 검사)으로 확인합니다. ROI 폭·높이를 유지하여 simcompare가 면적으로 한 번만 나누며 결과 단위는 `1`입니다. 도메인 해석은 담당자 확인 필요입니다.

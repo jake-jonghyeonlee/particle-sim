@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 
 import numpy as np
 
@@ -107,14 +107,24 @@ def unit_modes(manifest: ProductManifest, masks: MaskSet | None = None) -> list[
     return [spec.failure_mode for spec in unit_specs(manifest, masks)]
 
 
-def _empty_result(spec: UnitSpec, shape: tuple[int, int], classification: str) -> PairResult:
-    return _single_electrode_result(spec, np.zeros(shape, dtype=bool), classification)
+def _empty_result(
+    spec: UnitSpec, shape: tuple[int, int], classification: str,
+    placeholders: tuple[np.ndarray, np.ndarray] | None = None,
+) -> PairResult:
+    failure = np.zeros(shape, dtype=bool) if placeholders is None else placeholders[0]
+    return _single_electrode_result(spec, failure, classification, placeholders)
 
 
 def _single_electrode_result(
-    spec: UnitSpec, failure: np.ndarray, classification: str
+    spec: UnitSpec, failure: np.ndarray, classification: str,
+    placeholders: tuple[np.ndarray, np.ndarray] | None = None,
 ) -> PairResult:
     shape = failure.shape
+    contact_b = np.zeros(shape, dtype=bool) if placeholders is None else placeholders[0]
+    margin = (
+        np.full(shape, np.nan, dtype=np.float32)
+        if placeholders is None else placeholders[1]
+    )
     return PairResult(
         pair_id=spec.unit_id,
         failure_mode=spec.failure_mode,
@@ -122,8 +132,8 @@ def _single_electrode_result(
         electrode_b=spec.electrode_b,
         failure=failure,
         contact_a=failure,
-        contact_b=np.zeros(shape, dtype=bool),
-        pair_margin_um=np.full(shape, np.nan, dtype=np.float32),
+        contact_b=contact_b,
+        pair_margin_um=margin,
         classification=classification,
     )
 
@@ -137,6 +147,8 @@ def evaluate_units(
     cache: DistanceCache,
     open_cache: OpenResultCache | None = None,
     specs: list[UnitSpec] | None = None,
+    *,
+    shared_readonly_placeholders: bool = False,
 ) -> list[PairResult]:
     """Every failure unit for one source step and particle size, in ``specs`` order.
 
@@ -147,10 +159,22 @@ def evaluate_units(
     geometry does not depend on the particle source step, so applicable steps reuse the same
     unit/diameter result. A caller evaluating transformed scenarios must isolate caches by
     geometry and bound their memory use.
+
+    ``shared_readonly_placeholders`` shares zero and NaN maps within this evaluation.
+    These placeholder arrays are read-only; the default keeps independent mutable maps.
     """
     if specs is None:
         specs = unit_specs(manifest, masks)
     shape = masks.grid.shape_yx
+    placeholders = None
+    if shared_readonly_placeholders:
+        # A bytes owner cannot be made writeable through an ndarray alias. Build the
+        # same C-order bytes as the default constructors, scoped to this evaluation.
+        zero = np.frombuffer(np.zeros(shape, dtype=bool).tobytes(), dtype=bool).reshape(shape)
+        nan = np.frombuffer(
+            np.full(shape, np.nan, dtype=np.float32).tobytes(), dtype=np.float32
+        ).reshape(shape)
+        placeholders = (zero, nan)
     margin = float(manifest.contact_margin_um)
     shorts = {r.pair_id: r for r in simulate_pairs(manifest, masks, stack_z, step_id, diameter_um, cache)}
     open_paths = {o.path_id: o for o in manifest.open_paths}
@@ -161,7 +185,7 @@ def evaluate_units(
             results.append(shorts[spec.unit_id])
             continue
         if spec.applicable_steps is not None and step_id not in spec.applicable_steps:
-            results.append(_empty_result(spec, shape, NOT_APPLICABLE_STEP))
+            results.append(_empty_result(spec, shape, NOT_APPLICABLE_STEP, placeholders))
             continue
         cache_key = (spec.unit_id, float(diameter_um), margin)
         cached = None if open_cache is None else open_cache.get(cache_key)
@@ -170,15 +194,37 @@ def evaluate_units(
                 opened = simulate_open(
                     manifest, masks, open_paths[spec.unit_id], diameter_um, contact_margin_um=margin
                 )
-                cached = _single_electrode_result(spec, opened.failure, opened.classification)
+                cached = _single_electrode_result(
+                    spec, opened.failure, opened.classification, placeholders
+                )
             elif spec.unit_kind == KIND_OPEN_ELECTRODE:
                 auto = simulate_auto_open(masks, spec.electrode_a, diameter_um, margin)
-                cached = _single_electrode_result(spec, auto.failure, auto.classification)
+                cached = _single_electrode_result(
+                    spec, auto.failure, auto.classification, placeholders
+                )
             else:
                 cno = simulate_cno(
                     links.get(spec.unit_id), spec.unit_id, masks.grid, diameter_um, margin
                 )
-                cached = _single_electrode_result(spec, cno.failure, cno.classification)
+                cached = _single_electrode_result(
+                    spec, cno.failure, cno.classification, placeholders
+                )
+            if open_cache is not None:
+                open_cache[cache_key] = cached
+        elif placeholders is not None:
+            # Reuse the cached geometry while moving its placeholders to this
+            # evaluation's pool. Otherwise cached units retain older pools here.
+            cached = replace(cached, contact_b=placeholders[0], pair_margin_um=placeholders[1])
+            if open_cache is not None:
+                open_cache[cache_key] = cached
+        elif not cached.contact_b.flags.writeable or not cached.pair_margin_um.flags.writeable:
+            # A caller may reuse a cache populated by an opt-in evaluation.
+            # The default contract still returns independently mutable maps.
+            cached = replace(
+                cached,
+                contact_b=np.zeros(shape, dtype=bool),
+                pair_margin_um=np.full(shape, np.nan, dtype=np.float32),
+            )
             if open_cache is not None:
                 open_cache[cache_key] = cached
         results.append(cached)

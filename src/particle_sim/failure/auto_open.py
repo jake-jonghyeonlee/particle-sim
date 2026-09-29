@@ -9,11 +9,13 @@ open, so it drops out of the comparison; a fully covered boundary run cuts the w
 
 from __future__ import annotations
 
+import os
 from dataclasses import dataclass
 
 import numpy as np
 from scipy.ndimage import label
 
+from particle_sim.failure.auto_open_batch import evaluate_blocks
 from particle_sim.failure.open_failure import _mask_bounds, open_candidates, particle_footprint
 from particle_sim.failure.open_fast import LocalConnectivity
 from particle_sim.io.masks import MaskSet
@@ -89,6 +91,32 @@ def _union_groups(label_sets: list[set[int]]) -> list[list[int]]:
     return list(groups.values())
 
 
+def _judges_open(
+    classes: list[set[tuple[str, int]]] | None,
+    groups: list[list[int]],
+    kinds: tuple[str, ...],
+) -> bool:
+    """Apply the original per-group terminal rule to local component classes."""
+    if classes is None:
+        return False
+    for members in groups:
+        alive: list[set[tuple[str, int]]] = []
+        for index in members:
+            if classes[index]:
+                alive.append(classes[index])
+            elif kinds[index] == "roi_boundary":
+                return True
+            # A covered contact is CNO and leaves the group comparison.
+        if len(alive) >= 2:
+            root_to_int: dict[tuple[str, int], int] = {}
+            mapped: list[set[int]] = []
+            for class_set in alive:
+                mapped.append({root_to_int.setdefault(root, len(root_to_int)) for root in class_set})
+            if len(_union_groups(mapped)) > 1:
+                return True
+    return False
+
+
 def _reference_auto_open_judgement(
     crop: np.ndarray,
     local: list[tuple[str, np.ndarray, np.ndarray]],
@@ -143,6 +171,12 @@ def _reference_auto_open_judgement(
 def simulate_auto_open(
     masks: MaskSet, electrode_id: str, diameter_um: float, contact_margin_um: float
 ) -> AutoOpenResult:
+    backend = os.environ.get("PARTICLE_SIM_OPEN_BACKEND", "auto")
+    if backend not in ("auto", "local"):
+        raise ValueError(
+            "PARTICLE_SIM_OPEN_BACKEND must be 'auto' or 'local' "
+            f"(got {backend!r})"
+        )
     electrode = masks.electrodes[electrode_id]
     grid = masks.grid
     failure = np.zeros(electrode.shape, dtype=bool)
@@ -175,55 +209,17 @@ def simulate_auto_open(
         region[tys, txs] = True
         terminal_regions.append(region)
 
-    lc = LocalConnectivity(crop, terminal_regions, half_y, half_x)
-
     ys, xs = np.nonzero(candidates)
-    centres = [
-        (int(y) - y0, int(x) - x0)
-        for y, x in zip(ys.tolist(), xs.tolist(), strict=True)
-    ]
-    # Walk tile by tile as simulate_open does
-    order = sorted(range(len(centres)), key=lambda i: lc.tile_key(*centres[i]))
-    for i in order:
-        cy, cx = centres[i]
-        tc = lc.terminal_classes((cy, cx), stamp)
-        if tc is None:
-            continue  # nothing was removed → not open
-
-        is_open = False
-        for members in groups:
-            # Rule 3 & 4: evaluate each group of terminals that shared a component
-            # at baseline.
-            alive: list[set] = []
-            for index in members:
-                kind = local[index][0]
-                classes = tc[index]
-                if classes:
-                    alive.append(classes)
-                elif kind == "roi_boundary":
-                    is_open = True  # Rule 3: boundary terminal fully covered → open
-                    break
-                # Rule 3: contact terminal fully covered → skip (CNO, not open)
-            if is_open:
-                break
-            if len(alive) >= 2:
-                # Rule 4: union-find grouping on shared roots.
-                # _union_groups expects list[set[int]], but terminal_classes returns
-                # set[_Class] where _Class = tuple[str, int].  Map them to ints.
-                root_to_int: dict[object, int] = {}
-                counter = 0
-                mapped: list[set[int]] = []
-                for class_set in alive:
-                    int_set: set[int] = set()
-                    for root in class_set:
-                        if root not in root_to_int:
-                            root_to_int[root] = counter
-                            counter += 1
-                        int_set.add(root_to_int[root])
-                    mapped.append(int_set)
-                if len(_union_groups(mapped)) > 1:
-                    is_open = True
-                    break
-        failure[int(ys[i]), int(xs[i])] = is_open
+    kinds = tuple(item[0] for item in local)
+    if backend == "auto":
+        evaluate_blocks(crop, terminal_regions, groups, kinds, stamp, ys, xs,
+                        y0, x0, failure, _judges_open)
+    else:
+        lc = LocalConnectivity(crop, terminal_regions, half_y, half_x)
+        centres = [(int(y) - y0, int(x) - x0) for y, x in zip(ys, xs, strict=True)]
+        order = sorted(range(len(centres)), key=lambda i: lc.tile_key(*centres[i]))
+        for i in order:
+            failure[int(ys[i]), int(xs[i])] = _judges_open(
+                lc.terminal_classes(centres[i], stamp), groups, kinds
+            )
     return AutoOpenResult(electrode_id, failure, AUTO_CONFIRMED, names, int(candidates.sum()))
-
