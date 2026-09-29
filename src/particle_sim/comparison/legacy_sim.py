@@ -111,6 +111,14 @@ def _check_same_product(config: dict, run_manifest: dict, reference_config: Path
             field="input_hashes",
         )
     current = run_manifest.get("input_hashes", {})
+    # 현재 결과는 실행의 모든 mask에 의존하므로 일부 mask만 대조해서는 같은 입력이라 할 수 없다.
+    missing = sorted(set(current) - {"manifest", "scenario"} - set(hashes))
+    if missing:
+        raise InputContractError(
+            f"기존 sim input_hashes에 현재 실행의 mask가 빠져 있습니다: {missing}",
+            file=str(reference_config),
+            field="input_hashes",
+        )
     mismatched = sorted(
         name for name, digest in hashes.items() if str(current.get(name)) != str(digest)
     )

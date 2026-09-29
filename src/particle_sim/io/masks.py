@@ -54,6 +54,20 @@ class MaskSet:
     contact_topology: ContactTopology | None = None
 
 
+def layer_unassigned_warnings(masks: MaskSet) -> list[str]:
+    """전극이 덮지 않은 layer 픽셀은 불량 단위에서 빠지므로 결과 경고로 남긴다."""
+    counts = {
+        name: count for name, count in (masks.layer_unassigned_pixels or {}).items() if count
+    }
+    if not counts:
+        return []
+    detail = ", ".join(f"{name}={count}" for name, count in sorted(counts.items()))
+    return [
+        "LAYER_UNASSIGNED: 전극에 할당되지 않은 layer 픽셀이 있어 short·open·CNO 판정에서 "
+        f"제외했습니다({detail}). 전극 mask 누락이 아닌지 확인하세요"
+    ]
+
+
 def load_binary_mask(path: Path, *, product_id: str, field: str) -> np.ndarray:
     """이진 마스크 파일을 읽어 bool (y, x) 배열을 반환한다.
 

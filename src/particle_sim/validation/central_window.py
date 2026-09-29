@@ -163,10 +163,25 @@ def analyze_central(
         if output_dir.resolve().is_relative_to(run_dir.resolve()):
             raise InputContractError("central output must be outside the source run", field="output")
         source_info = json.loads((run_dir / "run_manifest.json").read_text(encoding="utf-8"))
-        if (source_info.get("product_id") != manifest.product_id or
-                source_info.get("config_hash") != canonical_hash(manifest.model_dump(mode="json"))):
-            raise InputContractError("source run does not match product config", field="run")
         nominal = (run_dir / "hotspots.zarr").exists()
+        if nominal:
+            same_config = source_info.get("config_hash") == canonical_hash(
+                manifest.model_dump(mode="json")
+            )
+        else:
+            # A probability config_hash also covers the scenario, which the run does not keep;
+            # match the product through the recorded manifest and mask file hashes instead.
+            source_hashes = source_info.get("input_hashes") or {}
+            same_config = (
+                source_info.get("design_version") == manifest.design_version
+                and source_hashes.get("manifest") == file_sha256(manifest_path)
+                and all(
+                    source_hashes.get(name) == digest
+                    for name, digest in masks.input_hashes.items()
+                )
+            )
+        if source_info.get("product_id") != manifest.product_id or not same_config:
+            raise InputContractError("source run does not match product config", field="run")
         if not nominal:
             # The manifest's nominal bins do not bound scenario diameter/CD/overlay changes.
             for row in rows:

@@ -4,7 +4,8 @@ schema_version: "2.0"
 product_id: PRODUCT_EXAMPLE
 design_version: V01
 # 기존 sim이 사용한 mask 파일의 sha256. 키는 제품 manifest의 상대 경로이며
-# run_manifest.json의 input_hashes 값과 모두 같아야 한다.
+# run_manifest.json input_hashes의 모든 mask(manifest·scenario 제외)를 빠짐없이 적고
+# 값이 모두 같아야 한다.
 input_hashes:
   masks/layer_M2.png: replace-with-sha256
   masks/electrode_D1.png: replace-with-sha256

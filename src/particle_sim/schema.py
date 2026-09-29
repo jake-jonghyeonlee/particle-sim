@@ -353,6 +353,14 @@ class ProductManifest(BaseModel):
             excluded_keys.add(key)
 
         self._check_unique("open_paths", "path_id", [o.path_id for o in self.open_paths])
+        # 결과 배열과 배분표는 불량 단위 ID로 묶이므로 pair와 open path가 ID를 공유하면 안 된다.
+        shared_ids = sorted(
+            {p.pair_id for p in self.electrode_pairs} & {o.path_id for o in self.open_paths}
+        )
+        if shared_ids:
+            raise ValueError(
+                f"electrode_pairs의 pair_id와 open_paths의 path_id가 겹칩니다: {shared_ids}"
+            )
         for open_path in self.open_paths:
             if open_path.electrode not in electrode_by_id:
                 raise ValueError(

@@ -221,6 +221,19 @@ def _apply_fab(args: argparse.Namespace) -> int:
                 "CA 표, run manifest와 제품 YAML의 product_id가 다릅니다",
                 field="product_id",
             )
+        if source_manifest.get("design_version") != manifest.design_version:
+            raise InputContractError(
+                "run manifest와 제품 YAML의 design_version이 다릅니다",
+                field="design_version",
+            )
+        source_hashes = source_manifest.get("input_hashes")
+        if not isinstance(source_hashes, dict) or source_hashes.get("manifest") != file_sha256(
+            Path(args.product_config)
+        ):
+            raise InputContractError(
+                "제품 YAML이 실행에 사용한 manifest와 다릅니다(input_hashes.manifest)",
+                field="product_config",
+            )
         artifacts = {
             str(item.get("path")): item
             for item in source_manifest.get("artifacts", [])
