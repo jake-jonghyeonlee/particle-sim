@@ -8,9 +8,10 @@ from __future__ import annotations
 
 import numpy as np
 import pytest
+from scipy.ndimage import label
 
 from particle_sim.failure.open_failure import causes_open_regions
-from particle_sim.failure.open_fast import LocalConnectivity
+from particle_sim.failure.open_fast import LocalConnectivity, _UnionFind
 
 
 def disc(reach_y: int, reach_x: int) -> np.ndarray:
@@ -333,3 +334,132 @@ def test_disc_no_overlap_returns_false() -> None:
         assert result is False, f"({y},{x})에서 겹침 없는데 open: {result}"
         checked += 1
     assert checked > 0, "겹침 없는 후보 중심이 하나도 없었습니다"
+
+
+def _original_tile_terminals(fast: LocalConnectivity, center: tuple[int, int]):
+    """Original whole-crop terminal preparation, independent of the new slice path."""
+    tile = fast._tile_for(*center)
+    outside = fast.component.copy()
+    outside[tile.top:tile.bottom, tile.left:tile.right] = False
+    labels, _ = label(outside)
+    expected = []
+    for region in fast.terminals:
+        inside = np.zeros_like(region)
+        inside[tile.top:tile.bottom, tile.left:tile.right] = region[
+            tile.top:tile.bottom, tile.left:tile.right
+        ]
+        ys, xs = np.nonzero(inside)
+        beyond = region & ~inside
+        outer = frozenset(int(value) for value in np.unique(labels[beyond]) if value)
+        expected.append(((ys - tile.top, xs - tile.left), outer))
+    return tile, expected
+
+
+def _original_terminal_classes(
+    fast: LocalConnectivity, center: tuple[int, int], footprint: np.ndarray
+):
+    """Original four-strip merge loop, including every repeated border pair."""
+    tile = fast._tile_for(*center)
+    blocked = stamp(fast.component.shape, footprint, *center)[
+        tile.top:tile.bottom, tile.left:tile.right
+    ]
+    damaged = tile.inside_component & ~blocked
+    if np.array_equal(damaged, tile.inside_component):
+        return None
+    inside_labels, _ = label(damaged)
+    union = _UnionFind()
+    height, width = damaged.shape
+    for inside, outside in (
+        (inside_labels[0], tile.outside_above),
+        (inside_labels[height - 1], tile.outside_below),
+        (inside_labels[:, 0], tile.outside_left),
+        (inside_labels[:, width - 1], tile.outside_right),
+    ):
+        for index in np.nonzero((inside > 0) & (outside > 0))[0]:
+            union.union(("in", int(inside[index])), ("out", int(outside[index])))
+    result = []
+    for (ys, xs), outer in zip(tile.terminal_local, tile.terminal_outside, strict=True):
+        classes = {union.find(("out", value)) for value in outer}
+        if ys.size:
+            alive = inside_labels[ys, xs]
+            classes.update(union.find(("in", int(value))) for value in np.unique(alive) if value)
+        result.append(classes)
+    return result
+
+
+@pytest.mark.parametrize("seed", [0, 1, 2, 3])
+def test_tile_preparation_and_classes_match_original(seed: int) -> None:
+    """Compare every centre, including diagonal contacts and all clipped ROI sides."""
+    rng = np.random.default_rng(seed)
+    electrode = rng.random((20, 24)) < 0.64
+    electrode[9:11, :] = True
+    electrode[:, 11:13] = True
+    a = np.zeros_like(electrode)
+    a[0:5, 0:6] = True
+    a[14:20, 18:24] = True  # disconnected pieces of one terminal
+    b = np.zeros_like(electrode)
+    b[2:18, 4:19] = True  # overlaps A and many components
+    c = np.zeros_like(electrode)
+    c[0:2, 20:24] = True
+    c[18:20, 0:4] = True
+    fast = LocalConnectivity(electrode, [a, b, c], 2, 3, max_tiles=2)
+    footprint = disc(2, 3)
+    for y in range(electrode.shape[0]):
+        for x in range(electrode.shape[1]):
+            tile, reference = _original_tile_terminals(fast, (y, x))
+            for (ys, xs), outer, (expected_local, expected_outer) in zip(
+                tile.terminal_local, tile.terminal_outside, reference, strict=True
+            ):
+                np.testing.assert_array_equal(ys, expected_local[0])
+                np.testing.assert_array_equal(xs, expected_local[1])
+                assert outer == expected_outer
+            assert fast.terminal_classes((y, x), footprint) == _original_terminal_classes(
+                fast, (y, x), footprint
+            )
+
+
+def test_border_reduction_keeps_separated_repeated_pairs(monkeypatch) -> None:
+    rng = np.random.default_rng(4)
+    electrode = rng.random((20, 24)) < 0.64
+    electrode[9:11, :] = True
+    electrode[:, 11:13] = True
+    fast = LocalConnectivity(electrode, [electrode, electrode], 2, 3)
+    observed = []
+    original_union = _UnionFind.union
+
+    def record_union(self, left, right):
+        observed.append((left, right))
+        original_union(self, left, right)
+
+    monkeypatch.setattr(_UnionFind, "union", record_union)
+    fast.terminal_classes((0, 6), np.ones((5, 7), dtype=bool))
+    pair = (("in", 1), ("out", 2))
+    positions = [i for i, value in enumerate(observed) if value == pair]
+    assert len(positions) >= 2
+    assert all(right > left + 1 for left, right in zip(positions[:-1], positions[1:], strict=True))
+    assert (("in", 1), ("out", 7)) in observed
+    assert (("in", 1), ("out", 8)) in observed
+
+
+def test_diagonal_contact_across_tile_border_stays_separate() -> None:
+    electrode = np.zeros((10, 10), dtype=bool)
+    electrode[2, 2] = True  # damage makes terminal_classes take the label path
+    electrode[4, 4] = True  # inside the centre's tile
+    electrode[5, 5] = True  # diagonal outside the tile, no 4-connected edge
+    a = np.zeros_like(electrode)
+    b = np.zeros_like(electrode)
+    a[4, 4] = True
+    b[5, 5] = True
+    fast = LocalConnectivity(electrode, [a, b], 1, 1)
+    footprint = np.ones((3, 3), dtype=bool)
+    tile, reference = _original_tile_terminals(fast, (2, 2))
+    assert (tile.bottom, tile.right) == (5, 5)
+    for (ys, xs), outer, (expected_local, expected_outer) in zip(
+        tile.terminal_local, tile.terminal_outside, reference, strict=True
+    ):
+        np.testing.assert_array_equal(ys, expected_local[0])
+        np.testing.assert_array_equal(xs, expected_local[1])
+        assert outer == expected_outer
+    classes = fast.terminal_classes((2, 2), footprint)
+    assert classes == _original_terminal_classes(fast, (2, 2), footprint)
+    assert classes is not None and classes[0].isdisjoint(classes[1])

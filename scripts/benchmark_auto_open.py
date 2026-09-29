@@ -145,6 +145,9 @@ def run(args: argparse.Namespace) -> None:
         "source": str(source),
         "asserted_import_path": str(actual),
         "source_auto_open_sha256": sha256(actual.read_bytes()),
+        "source_open_fast_sha256": sha256(
+            (source / "particle_sim" / "failure" / "open_fast.py").read_bytes()
+        ),
         "manifest": str(manifest_path),
         "manifest_sha256": sha256(manifest_path.read_bytes()),
         "input_hashes": inputs,
@@ -156,8 +159,43 @@ def run(args: argparse.Namespace) -> None:
     _write_json(root / f"{args.mode}-provenance.json", provenance)
     print(json.dumps({"kind": "provenance", "mode": args.mode,
                       "asserted_import_path": str(actual),
+                      "source_open_fast_sha256": provenance["source_open_fast_sha256"],
                       "manifest_sha256": provenance["manifest_sha256"],
                       "input_count": len(inputs)}), flush=True)
+    if args.mode == "benchmark":
+        oracle_provenance = root / "oracle-provenance.json"
+        if oracle_provenance.exists():
+            frozen = json.loads(oracle_provenance.read_text())
+            if (frozen["manifest_sha256"] != provenance["manifest_sha256"]
+                    or frozen["input_hashes"] != inputs):
+                raise RuntimeError("benchmark input differs from stored oracle")
+        electrodes = args.electrodes or list(JUDGED)
+        for repeat in range(args.repeats):
+            for diameter in args.sizes:
+                for electrode in electrodes:
+                    if electrode not in masks.electrodes:
+                        raise ValueError(f"missing electrode: {electrode}")
+                    _disk_guard(root)
+                    rss_before = _rss_bytes()
+                    start = time.perf_counter()
+                    result = auto_open.simulate_auto_open(
+                        masks, electrode, float(diameter), float(manifest.contact_margin_um)
+                    )
+                    meta = _metadata(result, diameter, time.perf_counter() - start,
+                                     np, rss_before)
+                    oracle_case = root / "cases" / f"{electrode}-d{diameter}.json"
+                    if oracle_case.exists():
+                        expected = json.loads(oracle_case.read_text())
+                        fields = ("electrode", "classification", "terminals", "candidates",
+                                  "dtype", "shape", "failure_sha256")
+                        different = [field for field in fields
+                                     if meta[field] != expected[field]]
+                        if different:
+                            raise RuntimeError(f"benchmark result differs from oracle: "
+                                               f"{electrode} d={diameter}, {different}")
+                    print(json.dumps({"kind": "benchmark", "repeat": repeat,
+                                      "source": str(source), **meta}), flush=True)
+        return
     oracle_cases = root / "cases"
     oracle_cases.mkdir(exist_ok=True)
     mismatches = 0
@@ -216,12 +254,14 @@ def run(args: argparse.Namespace) -> None:
 
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("mode", choices=("prepare", "oracle", "compare"))
+    parser.add_argument("mode", choices=("prepare", "oracle", "compare", "benchmark"))
     parser.add_argument("--oracle-dir", type=Path, required=True)
     parser.add_argument("--candidate", type=Path, default=Path.cwd())
     parser.add_argument("--manifest", type=Path, default=DEFAULT_MANIFEST)
     parser.add_argument("--sizes", type=int, nargs="+", default=list(SIZES))
     parser.add_argument("--all-electrodes", action="store_true")
+    parser.add_argument("--electrodes", nargs="+")
+    parser.add_argument("--repeats", type=int, default=3)
     args = parser.parse_args()
     if args.mode == "prepare":
         prepare(args.oracle_dir.resolve())
