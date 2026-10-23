@@ -486,13 +486,19 @@ chunk를 사용하더라도 계산 중간 배열은 전체 이미지 크기의 �
 - 현재 실행의 `contact_margin_um`은 0 µm로 고정한다. 비영값은 실측 또는 물리 근거와 검증 사례가
   마련된 뒤 사용한다.
 - 실제 불량확률/수율 변환: 노출 면적·기간, 이물 독립성, Poisson 가정과 제품 대조
-- CNO 가림 기준: contact가 **전부** 가려져야 CNO인지, **일부**만 가려져도 저항 증가나 접촉 불량으로
+- (아래 2026-09-30 확정으로 대체) CNO 가림 기준: contact가 **전부** 가려져야 CNO인지, **일부**만 가려져도 저항 증가나 접촉 불량으로
   CNO인지 논의가 필요하다. 1차 구현은 전부 가림을 잠정 기준으로 두고 `TODO_PHYSICS` 경고를 남긴다.
   일부 가림을 채택하면 가림 비율 임계값과 그 근거(접촉저항 측정, FA 사례)를 함께 정한다. 기준을
   재계산 없이 바꿀 수 있도록 contact별 최대 가림 비율을 출력할지도 함께 검토한다.
 - CNO 중복 contact: **2026-09-21 확정.** 같은 두 전극을 여러 contact hole이 병렬로 잇는 경우
   hole 하나라도 막히면 CNO로 본다. 기존 잠정 기준을 그대로 확정했으므로 코드 변경은 없고,
   `CNO_COVERAGE_RULE`의 `any_hole` 절반이 확정, `full_cover` 절반은 여전히 잠정이다.
+- CNO 가림 기준: **2026-09-30 확정.** 이물 원판(margin 없음)이 hole 중심 픽셀을 덮으면 그 hole이
+  막힌 것으로 본다. 면적 비율 기준(구현상 절반 이상)은 폐기했다. `CNO_COVERAGE_RULE =
+  "hole_centre_any_hole"`, TODO_PHYSICS 경고는 없앴다. 자동 단자 open에서 contact 단자를 빼는 조건
+  (완전히 가려짐)은 고속 경로의 정확성 근거라 그대로 둔다.
+- Fab 이물 밀도 layer: **2026-09-30 확정.** source step의 착지 layer 바로 위 마스크 layer(patterned 또는 contact hole
+  layer, 마스크 없는 절연막은 건너뜀)의 값을 쓴다. manifest `fab_distribution_layer`를 생략하면 자동으로 정하고, schema 2.0에서 다른 이름은 거부한다.
 - net 단위 open: 같은 net이 다른 layer와 contact를 거쳐 우회 경로를 가지면 전극 하나가 끊겨도 실제
   신호는 유지될 수 있다. 1차 자동 단자 open은 전극 단위로 판정하고, 여러 layer를 묶은 net 연결
   그래프 판정은 후속으로 검토한다.

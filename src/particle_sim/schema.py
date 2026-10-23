@@ -61,7 +61,9 @@ class ParticleSourceStep(BaseModel):
     step_id: str
     lands_after_layer: str
     surface_model: SurfaceModel
-    fab_distribution_layer: str
+    # 생략하면 lands_after_layer 바로 위 마스크 layer(patterned 또는 contact hole layer) 이름으로
+    # 정한다. schema 2.0에서 명시하면 그 이름과 같아야 하고, 위에 마스크 layer가 없을 때만 적는다.
+    fab_distribution_layer: str | None = None
 
 
 class OpenPath(BaseModel):
@@ -246,6 +248,42 @@ class ProductManifest(BaseModel):
             raise ValueError("particle_sizes_um은 엄격히 증가해야 합니다")
         return value
 
+    def upper_mask_layer(self, layer_name: str) -> str | None:
+        """process_order에서 layer_name 바로 위의 마스크 layer. 없으면 None.
+
+        마스크 layer는 patterned layer와 contact hole layer(contact mask가 있는 절연막)다.
+        마스크 없는 절연막은 건너뛴다.
+        """
+        hole_layers = {contact.hole_layer for contact in self.contacts}
+        ordered = sorted(self.stack, key=lambda layer: layer.process_order)
+        order = next(x.process_order for x in ordered if x.layer_name == layer_name)
+        above = [
+            x for x in ordered
+            if x.process_order > order and (x.patterned or x.layer_name in hole_layers)
+        ]
+        return above[0].layer_name if above else None
+
+    def _resolve_fab_layer(self, step: ParticleSourceStep) -> ParticleSourceStep:
+        """Fab 이물 밀도는 착지 layer 바로 위 마스크 layer의 값을 쓴다(2026-09-30 결정)."""
+        upper = self.upper_mask_layer(step.lands_after_layer)
+        given = step.fab_distribution_layer
+        if given and self.schema_version != "2.0":
+            return step  # schema 1.0의 명시값은 이전처럼 자유 식별자로 둔다
+        if upper is None:
+            if not given:
+                raise ValueError(
+                    f"step '{step.step_id}': lands_after_layer '{step.lands_after_layer}' 위에 "
+                    "마스크 layer가 없어 fab_distribution_layer를 명시해야 합니다"
+                )
+            return step
+        if given and given != upper:
+            raise ValueError(
+                f"step '{step.step_id}': fab_distribution_layer '{given}'은(는) "
+                f"lands_after_layer '{step.lands_after_layer}' 바로 위 마스크 layer "
+                f"'{upper}'와 같아야 합니다"
+            )
+        return step if given else step.model_copy(update={"fab_distribution_layer": upper})
+
     @model_validator(mode="after")
     def _check_cross_references(self) -> ProductManifest:
         stack_by_name = {layer.layer_name: layer for layer in self.stack}
@@ -298,6 +336,11 @@ class ProductManifest(BaseModel):
                     f"step '{step.step_id}'의 lands_after_layer "
                     f"'{step.lands_after_layer}'이(가) stack에 없습니다"
                 )
+        object.__setattr__(
+            self,
+            "particle_source_steps",
+            [self._resolve_fab_layer(step) for step in self.particle_source_steps],
+        )
 
         electrode_by_id = {e.electrode_id: e for e in self.electrodes}
         for pair in self.electrode_pairs:
@@ -629,12 +672,6 @@ def todo_physics_warnings(m: ProductManifest) -> list[str]:
         f"TODO_PHYSICS: post_step_policy.mode={policy.mode} 이후 형성 layer 접촉 정책은 가정입니다",
         "TODO_PHYSICS: electrode_z=nominal 전극 높이는 하부 topography와 무관한 평균값입니다",
     ]
-    if m.contacts:
-        warnings.append(
-            "TODO_PHYSICS: CNO는 margin 없는 입자 disc가 TR-cut contact hole 전체 픽셀의 "
-            "50% 이상을 가리면 불량으로 보고, 같은 전극을 잇는 hole 중 하나라도 해당하면 "
-            "불량으로 보는 합성 기준입니다(병렬 hole의 물리적 기준 미확정)"
-        )
     if any(m.open_applicable_steps_by_layer.values()):
         warnings.append(
             "TODO_PHYSICS: 자동 단자 open은 전극 단위 판정이며 같은 net의 다른 layer 우회 경로는 "

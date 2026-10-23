@@ -745,8 +745,8 @@ def test_open_source_key_repeated_steps(tmp_path, exported, auto):
     if auto:
         payload["open_applicable_steps_by_layer"] = {
             "M2": [s["step_id"] for s in payload["particle_source_steps"]]}
-    for i, step in enumerate(payload["particle_source_steps"]):
-        step["fab_distribution_layer"] = f"SOURCE_{i}"
+    for step in payload["particle_source_steps"]:
+        step.pop("fab_distribution_layer", None)  # derived: layer directly above landing layer
     manifest.write_text(yaml.safe_dump(payload))
     specs, _ = _generated_run(manifest, tmp_path / "run", exported[1])
     out = export_simcompare(tmp_path / "run", manifest, tmp_path / "out")
@@ -755,7 +755,8 @@ def test_open_source_key_repeated_steps(tmp_path, exported, auto):
     assert len({b["sample_id"] for b in bundles}) == len(bundles)
     assert len({b["fab_pair_key"] for b in bundles}) == 1
     assert bundles[0]["fab_pair_key"] == f"{specs[0].unit_id}:M2-N/A"
-    assert len({b["assigned_process_layer"] for b in bundles}) == len(bundles)
+    # S_M1 lands on M1 -> M2; S_M2 (M2) and S_PLN (PLN) both have M3 directly above.
+    assert {b["assigned_process_layer"] for b in bundles} == {"M2", "M3"}
 
 
 def test_mean_ca_exports_raw_area(exported, tmp_path):

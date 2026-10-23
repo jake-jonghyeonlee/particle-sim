@@ -130,6 +130,9 @@ CNO만 있는 실행도 header-only CSV로 성공하지만 분석 가능한 데�
 원본 tuple과 ID 대응은 `provenance.json`의 `sample_id_mapping`에 기록한다.
 Fab 자료(`fab.json` / `fab_measurements.csv`)는 생성하지 않으며 `export_warnings.json`에 남는다.
 Contract 1.2: 모든 유형의 `assigned_process_layer`는 source step의 `fab_distribution_layer`다.
+`fab_distribution_layer`는 착지 layer(`lands_after_layer`) 바로 위 마스크 layer(patterned layer 또는 contact hole layer, 마스크 없는
+절연막은 건너뜀) 이름이며, 생략하면 manifest 검증에서 자동으로 정한다. schema 2.0에서 다른 이름을 적으면
+거부하고, 위에 마스크 layer가 없을 때만 직접 적는다(2026-09-30 결정).
 CA에 해당 열이 있으면 step 내 모든 값이 manifest와 같아야 하며 공백/불일치는 쓰기 전에 거부한다.
 `fab_pair_key`는 raw unit ID와 순서대로 내보낸 layer를 그대로 이은 `<unit>:<layer_a>-<layer_b>`다.
 Open은 `<unit>:<layer_a>-N/A`이며 punctuation/Unicode를 보존한다. 공백/가장자리 whitespace와

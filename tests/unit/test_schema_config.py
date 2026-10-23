@@ -60,7 +60,7 @@ def base_manifest() -> dict:
         ],
         "particle_source_steps": [
             {"step_id": "S1", "lands_after_layer": "L2", "surface_model": "conformal",
-             "fab_distribution_layer": "L1"},
+             "fab_distribution_layer": "L3"},
         ],
         "electrode_pairs": [
             {"pair_id": "P1", "electrode_a": "E1", "electrode_b": "E2",
@@ -108,7 +108,7 @@ def test_particle_sizes() -> None:
              "electrode_role": "x", "path": "masks/E9.png"})),
         ("dup_step_id", lambda d: d["particle_source_steps"].append(
             {"step_id": "S1", "lands_after_layer": "L2", "surface_model": "flat",
-             "fab_distribution_layer": "L1"})),
+             "fab_distribution_layer": "L3"})),
         ("dup_pair_id", lambda d: d["electrode_pairs"].append(
             {"pair_id": "P1", "electrode_a": "E2", "electrode_b": "E3",
              "failure_mode": "vertical_short"})),
@@ -276,11 +276,60 @@ def test_error_str_format() -> None:
     assert str(InputContractError("msg", product_id="P")) == "[product=P] msg"
 
 
-def test_fab_distribution_layer_is_free_identifier() -> None:
+def test_schema_v1_keeps_explicit_fab_distribution_layer_as_free_identifier() -> None:
     data = base_manifest()
     data["particle_source_steps"][0]["fab_distribution_layer"] = "S_FAB_ONLY"
     m = ProductManifest.model_validate(data)
     assert m.particle_source_steps[0].fab_distribution_layer == "S_FAB_ONLY"
+
+
+def _v2_steps(**step: object) -> dict:
+    data = base_manifest()
+    data["schema_version"] = "2.0"
+    data["excluded_electrode_pairs"] = []
+    data["particle_source_steps"] = [
+        {"step_id": "S1", "lands_after_layer": "L2", "surface_model": "conformal", **step}
+    ]
+    return data
+
+
+def test_fab_layer_defaults_to_patterned_layer_directly_above_landing_layer() -> None:
+    # L2 is an unmasked insulator, so the next patterned layer above it is L3.
+    for data in (_v2_steps(), base_manifest()):
+        data["particle_source_steps"][0].pop("fab_distribution_layer", None)
+        m = ProductManifest.model_validate(data)
+        assert m.particle_source_steps[0].fab_distribution_layer == "L3"
+    data = _v2_steps()
+    data["particle_source_steps"][0]["lands_after_layer"] = "L1"  # skips unmasked L2
+    assert ProductManifest.model_validate(data).particle_source_steps[0].fab_distribution_layer == "L3"
+    m = ProductManifest.model_validate(_v2_steps(fab_distribution_layer="L3"))
+    assert m.particle_source_steps[0].fab_distribution_layer == "L3"
+
+
+def test_schema_v2_rejects_fab_layer_other_than_the_layer_above() -> None:
+    with pytest.raises(ValidationError, match="바로 위 마스크 layer 'L3'"):
+        ProductManifest.model_validate(_v2_steps(fab_distribution_layer="L1"))
+
+
+def test_contact_hole_layer_counts_as_a_mask_layer() -> None:
+    data = _v2_steps()
+    data["particle_source_steps"][0]["lands_after_layer"] = "L1"
+    data["contacts"] = [{"contact_id": "C1", "path": "masks/C1.png", "hole_layer": "L2",
+                         "applicable_particle_source_steps": ["S1"]}]
+    data["open_applicable_steps_by_layer"] = {"L1": [], "L3": []}
+    m = ProductManifest.model_validate(data)
+    assert m.upper_mask_layer("L1") == "L2"
+    assert m.particle_source_steps[0].fab_distribution_layer == "L2"
+
+
+def test_fab_layer_must_be_explicit_when_nothing_patterned_is_above() -> None:
+    data = _v2_steps()
+    data["particle_source_steps"][0]["lands_after_layer"] = "L3"
+    with pytest.raises(ValidationError, match="명시해야 합니다"):
+        ProductManifest.model_validate(data)
+    data["particle_source_steps"][0]["fab_distribution_layer"] = "TOP_PASSIVATION"
+    m = ProductManifest.model_validate(data)
+    assert m.particle_source_steps[0].fab_distribution_layer == "TOP_PASSIVATION"
 
 
 def test_missing_manifest_file(tmp_path: Path) -> None:

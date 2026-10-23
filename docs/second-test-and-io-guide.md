@@ -494,18 +494,16 @@ electrodes:
     path: masks/electrode_P1.png
 
 particle_source_steps:
+  # fab_distribution_layer를 생략하면 바로 위 마스크 layer로 정한다: S_M1 → M2, S_M2·S_PLN → M3
   - step_id: S_M1
     lands_after_layer: M1
     surface_model: conformal
-    fab_distribution_layer: S_M1
   - step_id: S_M2
     lands_after_layer: M2
     surface_model: conformal
-    fab_distribution_layer: S_M2
   - step_id: S_PLN
     lands_after_layer: PLN
     surface_model: flat
-    fab_distribution_layer: S_PLN
 
 electrode_pairs:
   - pair_id: D1__D2
@@ -623,7 +621,7 @@ TR 영역은 이 목록에 포함하지 않으며 현재 불량 판정에도 사
 | `step_id` | 결과의 이물 유입 공정 축에 기록되는 고유 ID |
 | `lands_after_layer` | 이물이 유입되는 시점 직전에 형성된 stack layer |
 | `surface_model` | `flat`, `conformal`, `partial` 중 하나 |
-| `fab_distribution_layer` | 후속 Fab 이물 표의 측정 공정과 연결할 이름 |
+| `fab_distribution_layer` | Fab 이물 표에서 쓸 layer. 착지 layer 바로 위 마스크 layer(patterned 또는 contact hole layer, 마스크 없는 절연막 제외) 이름으로 자동 결정(생략 권장). schema 2.0에서 다른 이름은 거부하고, 위에 마스크 layer가 없을 때만 직접 적는다 |
 
 - `flat`: landing layer의 평균 상면 높이를 전체 ROI에 사용한다.
 - `conformal`: 아래 patterned layer의 요철을 그대로 반영한다.
@@ -693,9 +691,10 @@ open_applicable_steps_by_layer:
   이물 없는 상태에서 이어져 있던 단자끼리 분리되거나 ROI 경계 구간이 완전히 덮이면 open이다. 단자가
   없는 조각이 떨어지는 경우는 무시한다. 단자가 2개 미만이면 `insufficient_terminals`로 기록한다.
   같은 전극에 `open_paths`가 있으면 그 경로가 우선한다.
-- **CNO(`cno:<contact>:<아래 전극>__<위 전극>`):** 잠정 기준은 이물이 hole의 실제 접촉 픽셀을 모두
-  덮으면 CNO, 같은 두 전극을 잇는 hole 중 하나라도 막히면 CNO다. 일부 가림과 병렬 hole 기준은
-  논의 중인 개선 항목이며 실행 manifest의 `cno_coverage_rule`과 경고에 표시된다.
+- **CNO(`cno:<contact>:<아래 전극>__<위 전극>`):** margin 없는 이물 원판이 hole(TR-cut 성분)의 중심
+  픽셀을 덮으면 CNO, 같은 두 전극을 잇는 hole 중 하나라도 막히면 CNO다(2026-09-30 확정). 중심은
+  hole 픽셀 무게중심을 반올림한 픽셀이고, 그 픽셀이 hole 밖이면(오목한 hole) 무게중심에 가장 가까운
+  hole 픽셀을 쓴다. 실행 manifest의 `cno_coverage_rule`은 `hole_centre_any_hole`이다.
 - contact가 막히는 위치는 open이 아니라 CNO로 계산한다. 두 유형이 같은 위치에 겹치면 union과 `1/k`
   배분이 중복 없이 처리한다.
 - 산포에서 contact는 `hole_layer`의 overlay·CD를 따른다. 산포 YAML의 overlay·CD 키에 hole layer 이름을
@@ -770,7 +769,7 @@ overlay는 기준 layer 대비 상대 이동이다. 양의 x는 오른쪽, 양�
 | 필드 | 필수 | 의미 |
 |---|---|---|
 | `fab_id`, `product_family` | 예 | 적용할 Fab와 제품군. 공통 분포는 제품군 `*` 사용 가능 |
-| `fab_distribution_layer` | 예 | manifest의 동일 필드와 연결되는 Fab 측정 layer |
+| `fab_distribution_layer` | 예 | manifest의 동일 필드(착지 layer 바로 위 마스크 layer)와 같은 이름의 Fab 측정 layer |
 | `size_bin_left_um`, `size_bin_right_um` | 예 | 이물 크기 구간 |
 | `size_representative_um` | 예 | `exact_point`로 연결할 시뮬레이션 직경 |
 | `mean_particle_count` | 예 | 검사 sample 하나당 평균 이물 개수 |

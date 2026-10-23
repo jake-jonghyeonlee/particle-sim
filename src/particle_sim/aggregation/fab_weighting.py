@@ -150,9 +150,20 @@ def apply_fab_weighting(
     rows: list[dict] = []
     missing_sizes: dict[str, list[float]] = {}
     missing_bins: dict[str, list[float]] = {}
-    for source_step, ca_step in ca.groupby("source_step", sort=False):
+    # Fab density comes from the layer directly above the landing layer, recorded per row as
+    # fab_distribution_layer. CA tables written before that column existed fall back to the
+    # source step ID, which was the legacy lookup key.
+    if "fab_distribution_layer" in ca.columns:
+        fab_key = ca["fab_distribution_layer"].where(
+            ca["fab_distribution_layer"].notna(), ca["source_step"]
+        ).astype(str)
+    else:
+        fab_key = ca["source_step"].astype(str)
+    for (source_step, fab_layer), ca_step in ca.groupby(
+        [ca["source_step"], fab_key], sort=False
+    ):
         density = fab_density_for(
-            table, fab_id=fab_id, product_family=product_family, source_step=str(source_step)
+            table, fab_id=fab_id, product_family=product_family, source_step=str(fab_layer)
         )
         matched, unmatched_sizes, unmatched_bins = match_sizes(
             ca_step, density, bin_method=table.bin_method

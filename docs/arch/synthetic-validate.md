@@ -14,7 +14,8 @@ post_step_policy {mode: "protrusion", coverage_break_factor: 1.5}.
 Stack (process_order, name, material, thickness_um, planarization_factor, patterned):
 `0 M1 conductor 0.3 None True`, `1 GI inorganic 0.4 0.0 False`,
 `2 M2 conductor 0.3 None True`, `3 PLN organic 2.0 0.8 False`, `4 M3 conductor 0.1 None True`.
-Steps (step_id lands_after_layer surface_model; fab_distribution_layer == step_id):
+Steps (step_id lands_after_layer surface_model; fab_distribution_layer omitted, derived as the
+mask layer (patterned or contact hole layer) directly above: S_M1 -> M2, S_M2 -> M3, S_PLN -> M3; `write_fab_table` writes M2 and M3):
 `S_M1 M1 conformal`, `S_M2 M2 conformal`, `S_PLN PLN flat`.
 
 Electrodes are full-height vertical stripes: `mask[:, x0:x1] = True` (x1 exclusive).

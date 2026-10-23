@@ -1,7 +1,7 @@
 """CNO (Contact Not Open): a particle blocks a contact·via hole between two electrodes.
 
-Synthetic criterion: a hole fails when a margin-free particle disc covers at least half
-of its entire TR-cut component. A link fails when any one of its holes fails.
+Criterion (decided 2026-09-30): a hole fails when a margin-free particle disc covers the
+centre of its TR-cut component. A link fails when any one of its holes fails.
 """
 
 from __future__ import annotations
@@ -15,9 +15,9 @@ from particle_sim.geometry.contacts import ContactLink
 from particle_sim.io.masks import GridSpec
 
 CNO_MODE = "contact_not_open"
-CNO_CONFIRMED = "cno_at_least_half_cut_hole"
+CNO_CONFIRMED = "cno_hole_centre_covered"
 CONTACT_LOST = "contact_lost"
-CNO_COVERAGE_RULE = "at_least_half_cut_hole_any_hole"
+CNO_COVERAGE_RULE = "hole_centre_any_hole"
 
 
 @dataclass(frozen=True)
@@ -27,10 +27,31 @@ class CnoResult:
     classification: str
 
 
+def hole_centre_pixel(ys: np.ndarray, xs: np.ndarray) -> tuple[int, int]:
+    """Pixel holding the centroid of a cut hole, or the hole pixel nearest to it.
+
+    The centroid is rounded half up. When it falls outside a non-convex hole, the hole pixel
+    with the smallest squared distance to the centroid is used (ties: smallest y, then x).
+    """
+    if len(ys) == 0 or len(ys) != len(xs):
+        raise ValueError("physical cut hole must contain matching, nonempty coordinates")
+    cy, cx = float(np.mean(ys)), float(np.mean(xs))
+    py, px = int(np.floor(cy + 0.5)), int(np.floor(cx + 0.5))
+    inside = (ys == py) & (xs == px)
+    if inside.any():
+        return py, px
+    d2 = (ys - cy) ** 2 + (xs - cx) ** 2
+    order = np.lexsort((xs, ys, d2))
+    return int(ys[order[0]]), int(xs[order[0]])
+
+
 def hole_blocked_centres(
     ys: np.ndarray, xs: np.ndarray, shape_yx: tuple[int, int], stamp: np.ndarray
 ) -> tuple[slice, slice, np.ndarray]:
-    """Centres covering at least half the physical cut hole, in a local window."""
+    """Centres whose stamp covers at least half the given hole pixels, in a local window.
+
+    With a single pixel (the hole centre) this is "the stamp covers that pixel".
+    """
     if len(ys) == 0 or len(ys) != len(xs):
         raise ValueError("physical cut hole must contain matching, nonempty coordinates")
     half_y, half_x = stamp.shape[0] // 2, stamp.shape[1] // 2
@@ -83,8 +104,9 @@ def simulate_cno(
     # Keep the argument for callers; CNO deliberately ignores the contact/open margin.
     stamp = particle_footprint(grid, diameter_um / 2.0, 0.0)
     for hole in link.holes:
+        cy, cx = hole_centre_pixel(hole.cut_ys, hole.cut_xs)
         rows, cols, blocked = hole_blocked_centres(
-            hole.cut_ys, hole.cut_xs, grid.shape_yx, stamp
+            np.array([cy]), np.array([cx]), grid.shape_yx, stamp
         )
         failure[rows, cols] |= blocked
     return CnoResult(unit_id, failure, CNO_CONFIRMED)

@@ -35,6 +35,15 @@ STACK = [
 ]
 STEPS = [("S_M1", "M1", "conformal"), ("S_M2", "M2", "conformal"), ("S_PLN", "PLN", "flat")]
 
+
+def _upper_patterned(layer: str) -> str:
+    names = [name for name, *_ in STACK]
+    return next(name for name, *rest in STACK[names.index(layer) + 1:] if rest[-1])
+
+
+# Fab 이물 밀도는 착지 layer 바로 위 patterned layer의 값을 쓴다(manifest에서 자동 결정).
+FAB_LAYERS = sorted({_upper_patterned(layer) for _step, layer, _model in STEPS})
+
 # case -> (electrodes, pairs); electrode = (id, layer, net, role, x0, x1)
 _CASES: dict[str, tuple[list[tuple[str, str, str, str, int, int]], list[tuple[str, str, str]]]] = {
     "parallel_lines": (
@@ -239,7 +248,6 @@ def _base_manifest(
                 "step_id": step_id,
                 "lands_after_layer": layer,
                 "surface_model": surface_model,
-                "fab_distribution_layer": step_id,
             }
             for step_id, layer, surface_model in STEPS
         ],
@@ -378,19 +386,19 @@ FAB_INSPECTION_AREA_MM2 = 100.0
 
 
 def write_fab_table(out_dir: Path, *, file_name: str = "fab_particles.csv") -> Path:
-    """Write a synthetic Fab particle table covering every synthetic source step."""
+    """Write a synthetic Fab particle table covering every Fab layer of the synthetic steps."""
     out_dir = Path(out_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
     path = out_dir / file_name
     rows: list[dict[str, object]] = []
     for fab_id, counts in _FAB_COUNTS.items():
-        for step_id, _layer, _model in STEPS:
+        for fab_layer in FAB_LAYERS:
             for size, count in zip(PARTICLE_SIZES_UM, counts, strict=True):
                 rows.append(
                     {
                         "fab_id": fab_id,
                         "product_family": "SYN",
-                        "source_step": step_id,
+                        "source_step": fab_layer,
                         "size_bin_left_um": size - 1.0,
                         "size_bin_right_um": size + 1.0,
                         "size_representative_um": size,
